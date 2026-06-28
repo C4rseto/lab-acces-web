@@ -5,6 +5,7 @@ import { ref, onValue, set, remove } from 'firebase/database';
 export default function GestionUsuarios() {
   const [docentes, setDocentes] = useState([]);
   const [nombre, setNombre] = useState('');
+  const [correo, setCorreo] = useState(''); // <-- Nuevo estado para correo
   const [uid, setUid] = useState('');
   const [pin, setPin] = useState('');
   const [laboratorio, setLab] = useState('💻 Lab. Cómputo');
@@ -24,7 +25,6 @@ export default function GestionUsuarios() {
   const [idParaEliminar, setIdParaEliminar] = useState(null);
   const [toast, setToast] = useState(null);
 
-  // 🔴 CORRECCIÓN 1: Minutos exactos del 00 al 59 generados automáticamente
   const listaHoras = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const listaMinutos = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 
@@ -57,6 +57,7 @@ export default function GestionUsuarios() {
   const cargarParaEditar = (docente) => {
     setDocenteEnEdicion(docente.id);
     setNombre(docente.nombre);
+    setCorreo(docente.correo || ''); // <-- Cargar correo si existe
     setUid(docente.uid);
     setPin(docente.pin);
     setLab(docente.laboratorio);
@@ -71,6 +72,7 @@ export default function GestionUsuarios() {
     const docenteData = {
       id: idUnico,
       nombre,
+      correo, // <-- Guardar correo
       uid: uid.toUpperCase(),
       pin: pin || '1234',
       laboratorio,
@@ -102,7 +104,7 @@ export default function GestionUsuarios() {
 
   const limpiarFormulario = () => {
     setDocenteEnEdicion(null);
-    setNombre(''); setUid(''); setPin('');
+    setNombre(''); setCorreo(''); setUid(''); setPin(''); // <-- Limpiar correo
     setHorariosEdicion([]);
     setRelojActivo(null);
   };
@@ -126,6 +128,10 @@ export default function GestionUsuarios() {
           
           <div className="flex flex-col gap-3">
             <div><label className="text-[10px] text-slate-400 uppercase font-bold">Nombre</label><input type="text" value={nombre} onChange={e => setNombre(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
+            
+            {/* <-- CAMPO DE CORREO AGREGADO AQUÍ --> */}
+            <div><label className="text-[10px] text-slate-400 uppercase font-bold">Correo Electrónico</label><input type="email" value={correo} onChange={e => setCorreo(e.target.value)} placeholder="ejemplo@correo.com" className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
+
             <div><label className="text-[10px] text-slate-400 uppercase font-bold">UID Tarjeta</label><input type="text" value={uid} onChange={e => setUid(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono uppercase outline-none" /></div>
             <div><label className="text-[10px] text-slate-400 uppercase font-bold">Código PIN</label><input type="text" value={pin} onChange={e => setPin(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none" /></div>
             <div>
@@ -155,7 +161,6 @@ export default function GestionUsuarios() {
                     <div className="absolute top-11 left-0 z-50 bg-[#0B1320] border border-slate-700 shadow-2xl rounded-xl p-3 w-[250px]">
                       <div className="flex justify-between text-[9px] text-slate-500 font-bold mb-1.5 text-center"><span className="w-1/3">HORA</span><span className="w-1/3">MINUTO</span><span className="w-1/3">FORMATO</span></div>
                       
-                      {/* 🔴 CORRECCIÓN 2: Clases [&::-webkit-scrollbar] agregadas para hacer el scroll invisible/sutil */}
                       <div className="flex gap-1 h-36">
                         <div className="w-1/3 overflow-y-auto flex flex-col gap-0.5 pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
                           {listaHoras.map(h => <button key={h} onClick={() => relojActivo === 'inicio' ? setInicioHora(h) : setFinHora(h)} className={`py-1 text-xs font-bold rounded border-0 ${((relojActivo === 'inicio' ? inicioHora : finHora) === h) ? 'bg-[#0BB885] text-white' : 'bg-transparent text-slate-400'}`}>{h}</button>)}
@@ -203,7 +208,11 @@ export default function GestionUsuarios() {
               <tbody className="divide-y divide-slate-800/40 text-xs text-slate-300">
                 {docentes.map(doc => (
                   <tr key={doc.id} className="hover:bg-slate-800/10">
-                    <td className="p-3 font-bold text-white text-sm">{doc.nombre}</td>
+                    <td className="p-3 font-bold text-white text-sm">
+                      {doc.nombre}
+                      {/* Opcional: Mostrar el correo debajo del nombre en la tabla */}
+                      {doc.correo && <div className="text-[10px] text-slate-400 font-normal mt-0.5">📧 {doc.correo}</div>}
+                    </td>
                     <td className="p-3"><div className="font-mono">💳 {doc.uid}</div><div className="text-orange-400 mt-0.5">🔑 PIN: ****</div></td>
                     <td className="p-3"><span className="text-blue-400 font-semibold">{doc.laboratorio}</span></td>
                     <td className="p-3"><div className="flex flex-col gap-1">{doc.horarios?.map((h, idx) => <span key={idx} className="bg-[#1e293b] px-1.5 py-0.5 rounded border border-slate-700 w-max text-[10px]">📅 {h.dia}: {h.inicio} - {h.fin}</span>)}</div></td>
