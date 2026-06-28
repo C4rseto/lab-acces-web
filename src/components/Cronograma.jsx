@@ -1,150 +1,67 @@
-import { useState, useEffect } from 'react';
-import { ref, onValue } from 'firebase/database';
+import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { Link } from 'react-router-dom';
+import { ref, onValue } from 'firebase/database';
 
 export default function Cronograma() {
-  const [reservasAprobadas, setReservasAprobadas] = useState([]);
+  const [docentes, setDocentes] = useState([]);
+  const [solicitudes, setSolicitudes] = useState([]);
+  const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
   useEffect(() => {
-    // Escuchamos la misma carpeta de reservas
-    const reservasRef = ref(db, 'reservas');
-    onValue(reservasRef, (snapshot) => {
+    onValue(ref(db, 'docentes'), snapshot => {
       const data = snapshot.val();
-      if (data) {
-        // Filtramos SOLO las que están en estado "aprobado"
-        const aprobadas = Object.keys(data)
-          .map(key => ({ id: key, ...data[key] }))
-          .filter(sol => sol.estado === 'aprobado');
-        
-        setReservasAprobadas(aprobadas);
-      } else {
-        setReservasAprobadas([]);
-      }
+      setDocentes(data ? Object.values(data) : []);
+    });
+    onValue(ref(db, 'solicitudes'), snapshot => {
+      const data = snapshot.val();
+      setSolicitudes(data ? Object.values(data) : []);
     });
   }, []);
 
-  // Función mágica para descubrir el día de la semana a partir del texto de la fecha
-  const obtenerDiaDeLaSemana = (fechaString) => {
-    if (!fechaString) return -1;
+  const cronogramaPorDia = () => {
+    const mapa = { Lunes: [], Martes: [], Miércoles: [], Jueves: [], Viernes: [], Sábado: [] };
     
-    // Intentamos extraer la fecha si viene en formato DD/MM/YYYY o YYYY-MM-DD
-    let dia, mes, anio;
-    
-    // Si tiene formato DD/MM/YYYY (Ej. 27/06/2026)
-    if (fechaString.includes('/')) {
-      const partes = fechaString.split(' ')[0].split('/'); // Tomamos solo la fecha si hay horas pegadas
-      if (partes.length >= 3) {
-        dia = parseInt(partes[0], 10);
-        mes = parseInt(partes[1], 10) - 1; // Los meses en JS empiezan en 0
-        anio = parseInt(partes[2], 10);
+    docentes.forEach(doc => {
+      if (doc.estado === 'Habilitado') {
+        doc.horarios?.forEach(h => {
+          if (mapa[h.dia]) mapa[h.dia].push({ tipo: 'clase', titulo: doc.nombre, lab: doc.laboratorio, inicio: h.inicio, fin: h.fin });
+        });
       }
-    } 
-    // Si tiene formato YYYY-MM-DD (Formato de input web nativo)
-    else if (fechaString.includes('-')) {
-      const partes = fechaString.split(' ')[0].split('-');
-      if (partes.length >= 3) {
-        anio = parseInt(partes[0], 10);
-        mes = parseInt(partes[1], 10) - 1;
-        dia = parseInt(partes[2], 10);
-      }
-    }
+    });
 
-    if (dia && anio) {
-      const fecha = new Date(anio, mes, dia);
-      return fecha.getDay(); // Retorna 0 (Domingo) a 6 (Sábado)
-    }
-    
-    return -1; // Si no logra leer la fecha
+    solicitudes.forEach(sol => {
+      if (sol.estado === 'APROBADA' && mapa[sol.fecha]) {
+        const [inicio, fin] = sol.horario.split(' - ');
+        mapa[sol.fecha].push({ tipo: 'prestamo', titulo: sol.estudiante, lab: sol.laboratorio, inicio, fin });
+      }
+    });
+
+    return mapa;
   };
 
-  // Agrupamos las reservas en los días de Lunes a Sábado
-  const diasSemana = [
-    { num: 1, nombre: 'LUNES' },
-    { num: 2, nombre: 'MARTES' },
-    { num: 3, nombre: 'MIÉRCOLES' },
-    { num: 4, nombre: 'JUEVES' },
-    { num: 5, nombre: 'VIERNES' },
-    { num: 6, nombre: 'SÁBADO' }
-  ];
+  const datosDia = cronogramaPorDia();
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-sans">
-      {/* Navegación */}
-      <nav className="flex justify-between items-center p-4 bg-slate-900 border-b border-slate-800 relative z-10">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-emerald-500 text-2xl">🛡️</span>
-            <h1 className="text-xl font-bold text-white">LabAccess</h1>
-          </div>
-          
-          <div className="flex gap-4 ml-8 text-sm font-medium">
-            <Link to="/dashboard" className="text-slate-400 hover:text-white transition-colors">Panel de Control</Link>
-            <Link to="/usuarios" className="text-slate-400 hover:text-white transition-colors">Gestión de Usuarios</Link>
-            <Link to="/prestamos" className="text-slate-400 hover:text-white transition-colors">Préstamos / Reservas</Link>
-            <Link to="/cronograma" className="text-emerald-500 border-b-2 border-emerald-500 pb-1">Cronograma</Link>
-          </div>
-        </div>
-      </nav>
-
-      {/* Contenido Principal */}
-      <div className="p-8 max-w-[1400px] mx-auto">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-white mb-1 flex items-center gap-2">
-            📅 Cronograma de Ocupación
-          </h2>
-          <p className="text-slate-400 text-sm">Vista rápida de todos los horarios de clases y préstamos aprobados para organizar el laboratorio.</p>
-        </div>
-
-        {/* Grilla de Días */}
-        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          {diasSemana.map((dia) => {
-            // Filtramos las reservas que caen en este día específico
-            const reservasDelDia = reservasAprobadas.filter(
-              (res) => obtenerDiaDeLaSemana(res.fecha) === dia.num
-            );
-
-            return (
-              <div key={dia.num} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden min-h-[60vh] flex flex-col">
-                <div className="p-4 border-b border-slate-800 bg-slate-950/50 text-center">
-                  <h3 className="font-bold text-sm tracking-widest text-slate-300">{dia.nombre}</h3>
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold text-white">📅 Cronograma de Ocupación Semanal</h1>
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        {diasSemana.map(dia => (
+          <div key={dia} className="bg-[#121B2A] border border-slate-800 p-3 rounded-xl flex flex-col gap-3 min-h-[400px]">
+            <h3 className="text-xs font-black text-slate-300 uppercase text-center border-b border-slate-800 pb-2 bg-[#0f172a] rounded py-2">{dia}</h3>
+            <div className="flex flex-col gap-2">
+              {datosDia[dia]?.map((ev, i) => (
+                <div key={i} className={`p-3 rounded-lg border text-left flex flex-col justify-between ${ev.tipo === 'clase' ? 'bg-blue-900/20 border-blue-500/30' : 'bg-amber-900/20 border-orange-500/30'}`}>
+                  <div>
+                    <div className={`font-bold text-xs ${ev.tipo === 'clase' ? 'text-blue-300' : 'text-orange-400'}`}>{ev.inicio} - {ev.fin}</div>
+                    <div className="text-white font-semibold mt-1 text-xs">{ev.titulo}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">📍 {ev.lab}</div>
+                  </div>
                 </div>
-                
-                <div className="p-3 flex-1 flex flex-col gap-3">
-                  {reservasDelDia.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center">
-                      <span className="text-slate-600 text-sm italic">Libre</span>
-                    </div>
-                  ) : (
-                    reservasDelDia.map((reserva) => (
-                      <div key={reserva.id} className="bg-emerald-950/30 border border-emerald-900/50 p-3 rounded-lg relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-                        
-                        <p className="text-[10px] font-bold text-emerald-500 mb-1 tracking-wider uppercase">
-                          PRESTAMO APROBADO
-                        </p>
-                        
-                        <p className="font-bold text-sm text-white leading-tight mb-1">
-                          🏢 {reserva.laboratorio || 'Laboratorio'}
-                        </p>
-                        
-                        <div className="flex items-center gap-1 mt-2 text-slate-400">
-                          <span className="text-xs">🕒</span>
-                          <span className="text-xs font-mono">{reserva.fecha}</span>
-                        </div>
-                        
-                        <div className="flex items-center gap-1 mt-1 text-slate-400">
-                          <span className="text-xs">👤</span>
-                          <span className="text-xs truncate">{reserva.estudiante || 'Docente'}</span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              ))}
+              {datosDia[dia]?.length === 0 && <div className="text-center text-slate-600 text-xs italic mt-4">Libre</div>}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
