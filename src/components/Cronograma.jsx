@@ -25,7 +25,9 @@ export default function Cronograma() {
       const data = snapshot.val();
       setDocentes(data ? Object.values(data) : []);
     });
-    onValue(ref(db, 'solicitudes'), snapshot => {
+    
+    // 🔴 CAMBIO 1: Buscamos en la carpeta 'reservas'
+    onValue(ref(db, 'reservas'), snapshot => {
       const data = snapshot.val();
       setSolicitudes(data ? Object.values(data) : []);
     });
@@ -58,15 +60,30 @@ export default function Cronograma() {
       }
     });
 
+    // 🔴 NUEVA FUNCIÓN: Convierte "28/06/2026" a su día de la semana
+    const obtenerDiaSemana = (fechaStr) => {
+      if (!fechaStr) return null;
+      if (diasSemana.includes(fechaStr)) return fechaStr; 
+      const partes = fechaStr.split('/');
+      if (partes.length === 3) {
+        const fechaObj = new Date(partes[2], partes[1] - 1, partes[0]);
+        const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        return dias[fechaObj.getDay()];
+      }
+      return null;
+    };
+
     solicitudes.forEach(sol => {
-      if (sol.estado === 'APROBADA' && mapa[sol.fecha]) {
-        const [inicio, fin] = sol.horario.split(' - ');
-        mapa[sol.fecha].push({ 
+      const diaConvertido = obtenerDiaSemana(sol.fecha);
+
+      // 🔴 CAMBIO 2 y 3: Estado en minúscula y uso de horaInicio / horaFin
+      if (sol.estado === 'aprobado' && diaConvertido && mapa[diaConvertido]) {
+        mapa[diaConvertido].push({ 
           tipo: 'prestamo', 
           titulo: `Reserva: ${sol.estudiante}`, 
           lab: sol.laboratorio, 
-          inicio: inicio?.trim(), 
-          fin: fin?.trim(),
+          inicio: sol.horaInicio, 
+          fin: sol.horaFin,
           color: colorPrestamo // Color naranja para los alumnos
         });
       }
