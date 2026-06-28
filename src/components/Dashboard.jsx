@@ -7,10 +7,12 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [auditoria, setAuditoria] = useState([]);
   const [docentes, setDocentes] = useState([]);
-  const [pestilloAbierto, setPestilloAbierto] = useState(false);
-  const [puertaAbierta, setPuertaAbierta] = useState(false);
   
-  // Nuevos estados para contadores
+  // Estados de Telemetría
+  const [pestilloAbierto, setPestilloAbierto] = useState(false);
+  const [ocupacion, setOcupacion] = useState(0); // NUEVO: Contador de personas
+  
+  // Estados para contadores
   const [alertasSeguridad, setAlertasSeguridad] = useState(0);
   const [reservasPendientes, setReservasPendientes] = useState(0);
 
@@ -26,7 +28,8 @@ export default function Dashboard() {
       const val = snapshot.val();
       if (val) {
         setPestilloAbierto(val.pestilloAbierto || false);
-        setPuertaAbierta(val.puertaAbierta || false);
+        // Leemos la cantidad de personas que el ESP32 cuenta
+        setOcupacion(val.ocupacion || 0); 
       }
     });
 
@@ -38,7 +41,6 @@ export default function Dashboard() {
         logs.sort((a, b) => b.fechaHora.localeCompare(a.fechaHora));
         setAuditoria(logs);
         
-        // Contar cuántos accesos fallidos hay
         const fallos = logs.filter(log => log.esExito === false).length;
         setAlertasSeguridad(fallos);
       } else {
@@ -78,7 +80,7 @@ export default function Dashboard() {
         <p className="text-slate-400 mt-1 text-xs">Monitoreo de accesos, ocupación y alertas en tiempo real desde el ESP32.</p>
       </div>
 
-      {/* 4 TARJETAS DE MÉTRICAS (Igual a tu diseño) */}
+      {/* 4 TARJETAS DE MÉTRICAS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* TARJETA 1: PESTILLO */}
@@ -93,15 +95,25 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* TARJETA 2: SENSOR PUERTA */}
-        <div className="bg-[#0B1320] p-5 rounded-2xl border border-slate-800/80 shadow-lg flex flex-col justify-between min-h-[120px]">
-          <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1">Sensor de Puerta</h3>
-          <p className={`text-3xl font-black ${puertaAbierta ? 'text-orange-400' : 'text-[#0BB885]'}`}>
-            {puertaAbierta ? 'ABIERTA' : 'CERRADA'}
+        {/* TARJETA 2: OCUPACIÓN ACTUAL (NUEVA) */}
+        <div className="bg-[#0B1320] p-5 rounded-2xl border border-slate-800/80 shadow-lg flex flex-col justify-between min-h-[120px] relative">
+          <div className="flex justify-between items-start">
+            <h3 className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-1">Ocupación Actual</h3>
+            {/* Icono de personas oscuro */}
+            <div className="bg-emerald-900/20 border border-emerald-800/30 p-1.5 rounded-lg">
+              <svg className="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+              </svg>
+            </div>
+          </div>
+          
+          <p className="text-4xl font-black text-white flex items-baseline gap-1 mt-1">
+            {ocupacion} <span className="text-sm font-normal text-slate-400 mb-1">personas</span>
           </p>
-          <div className="flex items-center gap-1.5 mt-2">
-            <span className={`w-1.5 h-1.5 rounded-full ${puertaAbierta ? 'bg-orange-400' : 'bg-[#0BB885]'}`}></span>
-            <span className="text-[10px] text-slate-400">{puertaAbierta ? 'Marco vulnerado' : 'Marco asegurado'}</span>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className={`text-[11px] font-semibold ${ocupacion === 0 ? 'text-[#0BB885]' : 'text-blue-400'}`}>
+              {ocupacion === 0 ? 'Nadie en el laboratorio' : 'Personas en el interior'}
+            </span>
           </div>
         </div>
 
@@ -109,11 +121,11 @@ export default function Dashboard() {
         <div className="bg-[#0B1320] p-5 rounded-2xl border border-slate-800/80 shadow-lg flex flex-col justify-between min-h-[120px]">
           <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1">Alertas de Seguridad</h3>
           <p className="text-3xl font-black text-white flex items-baseline gap-1">
-            {alertasSeguridad} <span className="text-xs font-normal text-slate-400 mb-1">alertas registradas</span>
+            {alertasSeguridad} <span className="text-xs font-normal text-slate-400 mb-1">alertas hoy</span>
           </p>
           <div className="flex items-center gap-1.5 mt-2">
             <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
-            <span className="text-[10px] text-slate-400">Intentos no autorizados</span>
+            <span className="text-[10px] text-slate-400">Intentos fuera de horario</span>
           </div>
         </div>
 
@@ -135,10 +147,8 @@ export default function Dashboard() {
 
       </div>
 
-      {/* TABLA DE AUDITORÍA (Estilo pulido) */}
+      {/* TABLA DE AUDITORÍA */}
       <div className="bg-[#0B1320] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl">
-        
-        {/* Cabecera de la tabla */}
         <div className="px-5 py-4 border-b border-slate-800/80 flex justify-between items-center">
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <svg className="w-4 h-4 text-[#0BB885]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
@@ -150,7 +160,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Contenido de la tabla */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
