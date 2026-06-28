@@ -28,11 +28,14 @@ export default function GestionUsuarios() {
   const listaHoras = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const listaMinutos = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 
-  // ESCUCHAR EN TIEMPO REAL DESDE REALTIME DATABASE
   useEffect(() => {
-    const docentesRef = ref(db, 'docentes');
+    // CAMBIA ESTA LÍNEA por la ruta real donde están tus usuarios
+    // Si tus usuarios están en la rama 'laboratorio/usuarios', cámbialo a eso:
+    const docentesRef = ref(db, 'laboratorio/usuarios'); 
+    
     const unsub = onValue(docentesRef, (snapshot) => {
       const data = snapshot.val();
+      // Como ahora los datos vienen de una estructura diferente, ajustamos la lista
       const list = data ? Object.values(data) : [];
       setDocentes(list);
     });
