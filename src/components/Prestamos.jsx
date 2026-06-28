@@ -8,13 +8,14 @@ export default function Prestamos() {
   const [seleccionada, setSeleccionada] = useState(null);
 
   useEffect(() => {
-    onValue(ref(db, 'solicitudes'), (snapshot) => {
+    // 1. AHORA LEEMOS DE LA CARPETA 'reservas'
+    onValue(ref(db, 'reservas'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
         const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        // Separamos en dos listas
-        setPendientes(lista.filter(s => s.estado === 'PENDIENTE'));
-        setHistorial(lista.filter(s => s.estado !== 'PENDIENTE').reverse()); // Los más recientes primero
+        // 2. BUSCAMOS EN MINÚSCULAS 'pendiente'
+        setPendientes(lista.filter(s => s.estado === 'pendiente'));
+        setHistorial(lista.filter(s => s.estado !== 'pendiente').reverse()); 
       } else {
         setPendientes([]);
         setHistorial([]);
@@ -24,8 +25,9 @@ export default function Prestamos() {
 
   const procesar = async (aprobada) => {
     if (seleccionada) {
-      const nuevoEstado = aprobada ? 'APROBADA' : 'DENEGADA';
-      await set(ref(db, `solicitudes/${seleccionada.id}/estado`), nuevoEstado);
+      // Guardamos en minúsculas para que el celular también lo entienda
+      const nuevoEstado = aprobada ? 'aprobado' : 'denegado';
+      await set(ref(db, `reservas/${seleccionada.id}/estado`), nuevoEstado);
       setSeleccionada(null);
     }
   };
@@ -53,9 +55,10 @@ export default function Prestamos() {
           <tbody className="divide-y divide-slate-800/40 text-xs">
             {pendientes.map(sol => (
               <tr key={sol.id} className="hover:bg-slate-800/20 transition-colors">
-                <td className="px-5 py-4"><div className="font-bold text-white text-sm">{sol.estudiante}</div><div className="text-slate-400 mt-0.5">{sol.rol}</div></td>
+                <td className="px-5 py-4"><div className="font-bold text-white text-sm">{sol.estudiante}</div><div className="text-slate-400 mt-0.5">{sol.equipos}</div></td>
                 <td className="px-5 py-4 text-blue-400 font-semibold">{sol.laboratorio}</td>
-                <td className="px-5 py-4 text-white font-bold">{sol.fecha} <br/><span className="text-slate-400 font-normal">{sol.horario}</span></td>
+                {/* 3. AHORA MOSTRAMOS horaInicio y horaFin */}
+                <td className="px-5 py-4 text-white font-bold">{sol.fecha} <br/><span className="text-slate-400 font-normal">{sol.horaInicio} - {sol.horaFin}</span></td>
                 <td className="px-5 py-4 text-center"><button onClick={() => setSeleccionada(sol)} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-lg border-0 cursor-pointer shadow-lg transition-colors">Evaluar</button></td>
               </tr>
             ))}
@@ -78,9 +81,9 @@ export default function Prestamos() {
                     <div className="font-bold text-slate-300">{sol.estudiante}</div>
                     <div className="text-[10px] text-slate-500">Motivo: {sol.motivo}</div>
                   </td>
-                  <td className="px-5 py-3 text-slate-400 text-[11px]">{sol.laboratorio}<br/>{sol.fecha} • {sol.horario}</td>
+                  <td className="px-5 py-3 text-slate-400 text-[11px]">{sol.laboratorio}<br/>{sol.fecha} • {sol.horaInicio} - {sol.horaFin}</td>
                   <td className="px-5 py-3 text-right">
-                    <span className={`px-2.5 py-1 rounded text-[10px] font-bold border uppercase tracking-wider ${sol.estado === 'APROBADA' ? 'text-[#0BB885] bg-[#0BB885]/10 border-[#0BB885]/20' : 'text-red-400 bg-red-400/10 border-red-500/20'}`}>
+                    <span className={`px-2.5 py-1 rounded text-[10px] font-bold border uppercase tracking-wider ${sol.estado === 'aprobado' ? 'text-[#0BB885] bg-[#0BB885]/10 border-[#0BB885]/20' : 'text-red-400 bg-red-400/10 border-red-500/20'}`}>
                       {sol.estado}
                     </span>
                   </td>
@@ -92,14 +95,14 @@ export default function Prestamos() {
         </div>
       </div>
 
-      {/* MODAL DE EVALUACIÓN (Se mantiene igual) */}
+      {/* MODAL DE EVALUACIÓN */}
       {seleccionada && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
           <div className="bg-[#0f172a] border border-slate-700 rounded-2xl p-6 max-w-md w-full flex flex-col gap-4 shadow-2xl">
             <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-3">📄 Revisión de Permiso</h3>
             <div className="border border-slate-700 rounded-xl p-4 bg-[#0B1320] flex flex-col gap-2">
               <div className="text-blue-400 font-bold text-xs uppercase tracking-wider">{seleccionada.laboratorio}</div>
-              <div className="text-white font-semibold text-sm">📅 {seleccionada.fecha} <span className="text-slate-500 font-normal">| {seleccionada.horario}</span></div>
+              <div className="text-white font-semibold text-sm">📅 {seleccionada.fecha} <span className="text-slate-500 font-normal">| {seleccionada.horaInicio} - {seleccionada.horaFin}</span></div>
               <div className="text-slate-300 italic mt-3 bg-[#121B2A] p-3 rounded-lg border border-slate-800/50 text-xs">" {seleccionada.motivo} "</div>
             </div>
             <div className="flex gap-3 mt-3">
