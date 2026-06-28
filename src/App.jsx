@@ -6,15 +6,14 @@ import GestionUsuarios from './components/GestionUsuarios';
 import Prestamos from './components/Prestamos';
 import Cronograma from './components/Cronograma';
 
-// Creamos un molde (Layout) para que tu Navbar Premium aparezca en todas las pantallas
+// Layout para tu Navbar Premium
 function AdminLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Función para pintar de verde la pestaña activa según la URL
   const isActive = (path) => location.pathname === path 
     ? 'text-[#0BB885] border-b-2 border-[#0BB885]' 
-    : 'text-slate-400 hover:text-white';
+    : 'text-slate-400 hover:text-white transition-colors';
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 font-sans antialiased pb-12">
@@ -26,11 +25,11 @@ function AdminLayout({ children }) {
             </svg>
             LabAccess
           </span>
-          <div className="flex gap-6 text-sm font-semibold">
-            <button onClick={() => navigate('/dashboard')} className={`bg-transparent border-0 cursor-pointer pb-2 ${isActive('/dashboard')}`}>Panel de Control</button>
-            <button onClick={() => navigate('/usuarios')} className={`bg-transparent border-0 cursor-pointer pb-2 ${isActive('/usuarios')}`}>Gestión de Usuarios</button>
-            <button onClick={() => navigate('/prestamos')} className={`bg-transparent border-0 cursor-pointer pb-2 ${isActive('/prestamos')}`}>Préstamos / Reservas</button>
-            <button onClick={() => navigate('/cronograma')} className={`bg-transparent border-0 cursor-pointer pb-2 ${isActive('/cronograma')}`}>Cronograma Semanal</button>
+          <div className="flex gap-5 text-[13px] font-semibold">
+            <button onClick={() => navigate('/dashboard')} className={`bg-transparent border-0 cursor-pointer pb-2 ${isActive('/dashboard')}`}>Panel General</button>
+            <button onClick={() => navigate('/usuarios')} className={`bg-transparent border-0 cursor-pointer pb-2 ${isActive('/usuarios')}`}>Gestión de Personal</button>
+            <button onClick={() => navigate('/prestamos')} className={`bg-transparent border-0 cursor-pointer pb-2 ${isActive('/prestamos')}`}>Reservas Extra.</button>
+            <button onClick={() => navigate('/cronograma')} className={`bg-transparent border-0 cursor-pointer pb-2 ${isActive('/cronograma')}`}>Cronograma</button>
           </div>
         </div>
         <div className="flex items-center gap-4 text-xs">
@@ -38,8 +37,6 @@ function AdminLayout({ children }) {
           <button onClick={() => navigate('/')} className="text-red-400 hover:text-red-300 bg-transparent border-0 cursor-pointer font-bold">Cerrar Sesión</button>
         </div>
       </nav>
-      
-      {/* Aquí abajo se inyecta la pantalla que elijas */}
       <main className="max-w-7xl mx-auto px-6 mt-8">
         {children}
       </main>
@@ -47,15 +44,11 @@ function AdminLayout({ children }) {
   );
 }
 
-// Este es el Router principal que le faltaba a la página
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Ruta del Login de tu amigo (Sin Navbar) */}
         <Route path="/" element={<Login />} />
-        
-        {/* Rutas del Sistema Pulido (Con Navbar) */}
         <Route path="/dashboard" element={<AdminLayout><Dashboard /></AdminLayout>} />
         <Route path="/usuarios" element={<AdminLayout><GestionUsuarios /></AdminLayout>} />
         <Route path="/prestamos" element={<AdminLayout><Prestamos /></AdminLayout>} />
