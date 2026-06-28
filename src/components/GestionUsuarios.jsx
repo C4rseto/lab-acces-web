@@ -64,15 +64,18 @@ export default function GestionUsuarios() {
     setHorariosEdicion(docente.horarios ? [...docente.horarios] : []);
   };
 
+  // ... (tu código anterior se mantiene igual hasta el guardarDocente)
+
   const guardarDocente = async () => {
     if (!nombre || !uid) return lanzarToast('⚠️ Completa Nombre y UID');
     if (horariosEdicion.length === 0) return lanzarToast('⚠️ Añade al menos un horario');
 
     const idUnico = docenteEnEdicion ? docenteEnEdicion : crypto.randomUUID();
+    
     const docenteData = {
       id: idUnico,
       nombre,
-      correo, // <-- Guardar correo
+      correo,
       uid: uid.toUpperCase(),
       pin: pin || '1234',
       laboratorio,
@@ -81,13 +84,27 @@ export default function GestionUsuarios() {
     };
 
     try {
+      // 1. Guardar en la rama principal de docentes (para tu gestión web)
       await set(ref(db, `docentes/${idUnico}`), docenteData);
-      lanzarToast('¡Sincronizado con Realtime Firebase! ⚡');
+      
+      // 2. Sincronizar automáticamente en 'laboratorio/usuarios' (para que tu App móvil lo lea)
+      await set(ref(db, `laboratorio/usuarios/${idUnico}`), {
+        nombre: docenteData.nombre,
+        correo: docenteData.correo,
+        laboratorio: docenteData.laboratorio,
+        habilitado: docenteData.estado === 'Habilitado',
+        uid: docenteData.uid
+      });
+
+      lanzarToast('¡Sincronizado con Web y App! ⚡');
       limpiarFormulario();
     } catch (e) {
       lanzarToast('❌ Error al guardar');
+      console.error(e);
     }
   };
+
+  // ... (resto de tu código)
 
   const alternarEstado = async (docente) => {
     const nuevoEstado = docente.estado === 'Habilitado' ? 'Deshabilitado' : 'Habilitado';
