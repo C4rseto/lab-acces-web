@@ -44,31 +44,29 @@ export default function Prestamos() {
     setSolicitudSeleccionada(null);
   };
 
+  // Lógica para Aprobar o Denegar sin pedir PIN
   const handleEvaluacion = async (nuevoEstado) => {
-    if (!respuestaAdmin.trim()) return alert("Redacta una respuesta.");
-
-    let datosActualizar = {
-      estado: nuevoEstado,
-      mensajeAdmin: respuestaAdmin,
-      fechaEvaluacion: new Date().toISOString()
-    };
-
-    // SI SE APRUEBA, PEDIMOS EL PIN
-    if (nuevoEstado === 'aprobado') {
-      const pinVisible = prompt("¡APROBANDO! Ingresa el PIN (4 dígitos) para el docente:");
-      if (!pinVisible || pinVisible.length !== 4) return alert("PIN inválido.");
-      
-      const pinCifrado = await cifrarSHA256(pinVisible);
-      datosActualizar.pinVisible = pinVisible; // Lo que ve el docente
-      datosActualizar.pin = pinCifrado;        // Lo que usa la puerta
+    if (!respuestaAdmin.trim()) {
+      alert("Por favor, redacta una respuesta para el alumno/docente.");
+      return;
     }
 
     try {
-      await update(ref(db, `reservas/${solicitudSeleccionada.id}`), datosActualizar);
-      alert(`Solicitud ${nuevoEstado} correctamente.`);
-      cerrarModal();
+      const solicitudRef = ref(db, `reservas/${solicitudSeleccionada.id}`);
+      
+      // Solo actualizamos el estado y el mensaje
+      await update(solicitudRef, { 
+        estado: nuevoEstado,
+        mensajeAdmin: respuestaAdmin,
+        fechaEvaluacion: new Date().toISOString()
+      });
+
+      alert(`Solicitud ${nuevoEstado.toUpperCase()} correctamente.`);
+      cerrarModal(); // Cerramos el modal
+
     } catch (error) {
-      alert("Error al procesar.");
+      console.error("Error al evaluar:", error);
+      alert("Hubo un error al procesar la solicitud.");
     }
   };
 
