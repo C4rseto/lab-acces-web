@@ -23,17 +23,40 @@ export default function Prestamos() {
   }, []);
 
   const procesar = async (aprobada) => {
-    if (seleccionada) {
-      const nuevoEstado = aprobada ? 'aprobado' : 'denegado';
+  if (seleccionada) {
+    if (aprobada) {
+      // 1. Obtener todas las reservas de Firebase para comprobar choques
+      const snapshot = await get(ref(db, 'reservas'));
+      const todasLasReservas = snapshot.val();
       
-      // Guardamos el estado y la respuesta que escribió el administrador
-      await set(ref(db, `reservas/${seleccionada.id}/estado`), nuevoEstado);
-      await set(ref(db, `reservas/${seleccionada.id}/respuestaAdmin`), respuestaAdmin || (aprobada ? 'Aprobado sin comentarios adicionales.' : 'Solicitud denegada.'));
-      
-      setSeleccionada(null);
-      setRespuestaAdmin(''); // Limpiamos la caja de texto
+      // 2. Comprobar si existe alguna reserva aprobada que choque con la actual
+      const hayChoque = Object.values(todasLasReservas || {}).some((reserva) => {
+        return (
+          reserva.estado === 'aprobado' &&
+          reserva.laboratorio === seleccionada.laboratorio &&
+          reserva.fecha === seleccionada.fecha &&
+          // Lógica de solapamiento de horarios (si hay intersección de tiempo)
+          (seleccionada.horaInicio < reserva.horaFin && seleccionada.horaFin > reserva.horaInicio)
+        );
+      });
+
+      if (hayChoque) {
+        alert("⚠️ ¡ERROR! No se puede aprobar: Ya existe otra reserva aprobada para este laboratorio en este horario.");
+        return; // Detenemos la ejecución y no aprobamos
+      }
     }
-  };
+
+    // 3. Si no hubo choque (o si estamos denegando), procedemos normalmente
+    const nuevoEstado = aprobada ? 'aprobado' : 'denegado';
+    
+    await set(ref(db, `reservas/${seleccionada.id}/estado`), nuevoEstado);
+    await set(ref(db, `reservas/${seleccionada.id}/respuestaAdmin`), respuestaAdmin || (aprobada ? 'Aprobado sin comentarios.' : 'Solicitud denegada.'));
+    
+    setSeleccionada(null);
+    setRespuestaAdmin('');
+    alert(aprobada ? "Reserva aprobada exitosamente." : "Reserva denegada.");
+  }
+};
 
   const cerrarModal = () => {
     setSeleccionada(null);
