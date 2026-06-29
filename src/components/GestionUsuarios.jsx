@@ -61,21 +61,27 @@ export default function GestionUsuarios() {
   };
 
   const cargarParaEditar = (docente) => {
-    setDocenteEnEdicion(docente.id);
-    setNombre(docente.nombre);
-    setCorreo(docente.correo || ''); // <-- Cargar correo si existe
-    setUid(docente.uid);
-    setPin(docente.pin);
-    setLab(docente.laboratorio);
+    // 1. Aseguramos que guarde el ID exacto del usuario en Firebase
+    setDocenteEnEdicion(docente.id); 
+    
+    // 2. Cargamos los datos previniendo errores si algún campo está vacío
+    setNombre(docente.nombre || '');
+    setCorreo(docente.correo || ''); 
+    setUid(docente.uid || '');
+    setPin(docente.pin || '');
+    setLab(docente.laboratorio || '💻 Lab. Cómputo');
     setHorariosEdicion(docente.horarios ? [...docente.horarios] : []);
   };
 
-  // ... (tu código anterior se mantiene igual hasta el guardarDocente)
-
   const guardarDocente = async () => {
     if (!nombre || !uid) return lanzarToast('⚠️ Completa Nombre y UID');
+    
+    // OJO: En tu imagen veo que Carlos y Axel no tienen horarios. 
+    // Si quieres que el sistema te deje guardarlos sin horarios, puedes comentar/borrar la siguiente línea:
     if (horariosEdicion.length === 0) return lanzarToast('⚠️ Añade al menos un horario');
 
+    // Si estamos editando (existe docenteEnEdicion), usamos SU MISMO ID para sobreescribir. 
+    // Si es un usuario nuevo, le creamos uno con crypto.randomUUID().
     const idUnico = docenteEnEdicion ? docenteEnEdicion : crypto.randomUUID();
     
     const docenteData = {
@@ -90,10 +96,9 @@ export default function GestionUsuarios() {
     };
 
     try {
-      // 1. Guardar en la rama principal de docentes (para tu gestión web)
+      // Guardamos en ambas rutas usando exactamente EL MISMO ID
       await set(ref(db, `docentes/${idUnico}`), docenteData);
       
-      // 2. Sincronizar automáticamente en 'laboratorio/usuarios' (para que tu App móvil lo lea)
       await set(ref(db, `laboratorio/usuarios/${idUnico}`), {
         nombre: docenteData.nombre,
         correo: docenteData.correo,
@@ -102,7 +107,8 @@ export default function GestionUsuarios() {
         uid: docenteData.uid
       });
 
-      lanzarToast('¡Sincronizado con Web y App! ⚡');
+      // Mensaje dinámico para saber qué hicimos
+      lanzarToast(docenteEnEdicion ? '¡Editado correctamente! ✏️' : '¡Usuario creado! ⚡');
       limpiarFormulario();
     } catch (e) {
       lanzarToast('❌ Error al guardar');
