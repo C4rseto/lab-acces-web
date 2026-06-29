@@ -2,12 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase'; 
 import { ref, onValue, set, remove } from 'firebase/database';
 
+// --- FUNCIONES GENERADORAS AUTOMÁTICAS ---
+const generarUID = () => {
+  const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 3; i++) {
+    result += caracteres.charAt(Math.floor(Math.random() * caracteres.length));
+  }
+  return result;
+};
+
+const generarPIN = () => {
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += Math.floor(Math.random() * 10).toString();
+  }
+  return result;
+};
+
 export default function GestionUsuarios() {
   const [docentes, setDocentes] = useState([]);
   const [nombre, setNombre] = useState('');
-  const [correo, setCorreo] = useState(''); // <-- Nuevo estado para correo
-  const [uid, setUid] = useState('');
-  const [pin, setPin] = useState('');
+  const [correo, setCorreo] = useState(''); 
+  
+  // INICIAN CON VALORES AUTOMÁTICOS
+  const [uid, setUid] = useState(generarUID());
+  const [pin, setPin] = useState(generarPIN());
+  
   const [laboratorio, setLab] = useState('💻 Lab. Cómputo');
   
   // Controles de Horarios y Reloj Popover
@@ -28,18 +49,14 @@ export default function GestionUsuarios() {
   const listaHoras = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const listaMinutos = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 
-  // ESCUCHAR EN TIEMPO REAL DESDE REALTIME DATABASE
   useEffect(() => {
-    // Volvemos a leer de 'docentes' para tener todos los datos completos de la web
     const docentesRef = ref(db, 'docentes'); 
-    
     const unsub = onValue(docentesRef, (snapshot) => {
       const data = snapshot.val();
       const list = data ? Object.entries(data).map(([key, value]) => ({
         ...value,
         id: key
       })) : [];
-      
       setDocentes(list);
     });
     return () => unsub();
@@ -61,21 +78,17 @@ export default function GestionUsuarios() {
   };
 
   const cargarParaEditar = (docente) => {
-    // 1. Aseguramos que guarde el ID exacto del usuario en Firebase
     setDocenteEnEdicion(docente.id); 
-    
-    // 2. Cargamos los datos previniendo errores si algún campo está vacío
     setNombre(docente.nombre || '');
     setCorreo(docente.correo || ''); 
-    setUid(docente.uid || '');
-    setPin(docente.pin || '');
+    setUid(docente.uid || generarUID()); // Si no tiene, genera uno
+    setPin(docente.pin || generarPIN()); // Si no tiene, genera uno
     setLab(docente.laboratorio || '💻 Lab. Cómputo');
     setHorariosEdicion(docente.horarios ? [...docente.horarios] : []);
   };
 
   const guardarDocente = async () => {
     if (!nombre || !uid) return lanzarToast('⚠️ Completa Nombre y UID');
-    
     if (horariosEdicion.length === 0) return lanzarToast('⚠️ Añade al menos un horario');
 
     const idUnico = docenteEnEdicion ? docenteEnEdicion : crypto.randomUUID();
@@ -85,24 +98,21 @@ export default function GestionUsuarios() {
       nombre,
       correo,
       uid: uid.toUpperCase(),
-      pin: pin || '1234', // Si dejas el espacio en blanco, pone 1234 por seguridad
+      pin: pin,
       laboratorio,
       horarios: horariosEdicion,
       estado: docenteEnEdicion ? docentes.find(d => d.id === idUnico)?.estado || 'Habilitado' : 'Habilitado'
     };
 
     try {
-      // 1. Guarda todos los datos en la tabla web
       await set(ref(db, `docentes/${idUnico}`), docenteData);
-      
-      // 2. Guarda los datos operativos (¡AHORA CON EL PIN INCLUIDO!)
       await set(ref(db, `laboratorio/usuarios/${idUnico}`), {
         nombre: docenteData.nombre,
         correo: docenteData.correo,
         laboratorio: docenteData.laboratorio,
         habilitado: docenteData.estado === 'Habilitado',
         uid: docenteData.uid,
-        pin: docenteData.pin // <-- ¡AQUÍ ESTÁ LA SOLUCIÓN!
+        pin: docenteData.pin
       });
 
       lanzarToast(docenteEnEdicion ? '¡Editado correctamente! ✏️' : '¡Usuario creado! ⚡');
@@ -113,18 +123,11 @@ export default function GestionUsuarios() {
     }
   };
 
-  // ... (resto de tu código)
-
   const alternarEstado = async (docente) => {
     const nuevoEstado = docente.estado === 'Habilitado' ? 'Deshabilitado' : 'Habilitado';
-    
     try {
-      // 1. Actualiza el texto en la tabla web
       await set(ref(db, `docentes/${docente.id}/estado`), nuevoEstado);
-      
-      // 2. Actualiza el acceso real (true/false) para la App y el Laboratorio
       await set(ref(db, `laboratorio/usuarios/${docente.id}/habilitado`), nuevoEstado === 'Habilitado');
-      
     } catch (error) {
       console.error("Error al cambiar estado:", error);
     }
@@ -133,10 +136,8 @@ export default function GestionUsuarios() {
   const eliminarDocente = async () => {
     if (idParaEliminar) {
       try {
-        // Borramos de las dos ramas para que desaparezca por completo
         await remove(ref(db, `docentes/${idParaEliminar}`));
         await remove(ref(db, `laboratorio/usuarios/${idParaEliminar}`));
-        
         lanzarToast('🗑️ Credencial eliminada');
         setIdParaEliminar(null);
       } catch (error) {
@@ -148,7 +149,10 @@ export default function GestionUsuarios() {
 
   const limpiarFormulario = () => {
     setDocenteEnEdicion(null);
-    setNombre(''); setCorreo(''); setUid(''); setPin(''); // <-- Limpiar correo
+    setNombre(''); 
+    setCorreo(''); 
+    setUid(generarUID()); // Regenera UID al limpiar
+    setPin(generarPIN()); // Regenera PIN al limpiar
     setHorariosEdicion([]);
     setRelojActivo(null);
   };
@@ -173,14 +177,28 @@ export default function GestionUsuarios() {
           <div className="flex flex-col gap-3">
             <div><label className="text-[10px] text-slate-400 uppercase font-bold">Nombre</label><input type="text" value={nombre} onChange={e => setNombre(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
             
-            {/* <-- CAMPO DE CORREO AGREGADO AQUÍ --> */}
             <div><label className="text-[10px] text-slate-400 uppercase font-bold">Correo Electrónico</label><input type="email" value={correo} onChange={e => setCorreo(e.target.value)} placeholder="ejemplo@correo.com" className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
 
-            <div><label className="text-[10px] text-slate-400 uppercase font-bold">UID Tarjeta</label><input type="text" value={uid} onChange={e => setUid(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono uppercase outline-none" /></div>
-            <div><label className="text-[10px] text-slate-400 uppercase font-bold">Código PIN</label><input type="text" value={pin} onChange={e => setPin(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none" /></div>
+            {/* CONTROLES CON GENERACIÓN AUTOMÁTICA */}
+            <div>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] text-slate-400 uppercase font-bold">UID Tarjeta (3 Caracteres)</label>
+                {!docenteEnEdicion && <button onClick={() => setUid(generarUID())} className="text-[9px] text-[#0BB885] bg-transparent border-0 cursor-pointer font-bold">↻ Generar</button>}
+              </div>
+              <input type="text" maxLength="3" value={uid} onChange={e => setUid(e.target.value.toUpperCase())} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono uppercase outline-none focus:border-[#0BB885]" />
+            </div>
+            
+            <div>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] text-slate-400 uppercase font-bold">Código PIN (6 Números)</label>
+                {!docenteEnEdicion && <button onClick={() => setPin(generarPIN())} className="text-[9px] text-[#0BB885] bg-transparent border-0 cursor-pointer font-bold">↻ Generar</button>}
+              </div>
+              <input type="text" maxLength="6" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono tracking-[0.2em] outline-none focus:border-[#0BB885]" />
+            </div>
+
             <div>
               <label className="text-[10px] text-slate-400 uppercase font-bold">Laboratorio</label>
-              <select value={laboratorio} onChange={e => setLab(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white cursor-pointer outline-none">
+              <select value={laboratorio} onChange={e => setLab(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white cursor-pointer outline-none focus:border-[#0BB885]">
                 <option value="💻 Lab. Cómputo">💻 Lab. Cómputo</option><option value="⚡ Lab. Electrónica">⚡ Lab. Electrónica</option><option value="🧪 Lab. Química">🧪 Lab. Química</option>
               </select>
             </div>
@@ -254,10 +272,12 @@ export default function GestionUsuarios() {
                   <tr key={doc.id} className="hover:bg-slate-800/10">
                     <td className="p-3 font-bold text-white text-sm">
                       {doc.nombre}
-                      {/* Opcional: Mostrar el correo debajo del nombre en la tabla */}
                       {doc.correo && <div className="text-[10px] text-slate-400 font-normal mt-0.5">📧 {doc.correo}</div>}
                     </td>
-                    <td className="p-3"><div className="font-mono">💳 {doc.uid}</div><div className="text-orange-400 mt-0.5">🔑 PIN: ****</div></td>
+                    <td className="p-3">
+                      <div className="font-mono text-emerald-400">💳 {doc.uid}</div>
+                      <div className="text-orange-400 mt-0.5 font-mono">🔑 PIN: {doc.pin || '****'}</div>
+                    </td>
                     <td className="p-3"><span className="text-blue-400 font-semibold">{doc.laboratorio}</span></td>
                     <td className="p-3"><div className="flex flex-col gap-1">{doc.horarios?.map((h, idx) => <span key={idx} className="bg-[#1e293b] px-1.5 py-0.5 rounded border border-slate-700 w-max text-[10px]">📅 {h.dia}: {h.inicio} - {h.fin}</span>)}</div></td>
                     <td className="p-3 text-center"><button onClick={() => alternarEstado(doc)} className={`px-2 py-0.5 rounded-full border text-[10px] font-bold cursor-pointer ${doc.estado === 'Habilitado' ? 'bg-[#0BB885]/10 text-[#0BB885] border-[#0BB885]/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>{doc.estado}</button></td>
