@@ -116,9 +116,17 @@ export default function GestionUsuarios() {
 
   const eliminarDocente = async () => {
     if (idParaEliminar) {
-      await remove(ref(db, `docentes/${idParaEliminar}`));
-      lanzarToast('🗑️ Credencial eliminada');
-      setIdParaEliminar(null);
+      try {
+        // Borramos de las dos ramas para que desaparezca por completo
+        await remove(ref(db, `docentes/${idParaEliminar}`));
+        await remove(ref(db, `laboratorio/usuarios/${idParaEliminar}`));
+        
+        lanzarToast('🗑️ Credencial eliminada');
+        setIdParaEliminar(null);
+      } catch (error) {
+        lanzarToast('❌ Error al eliminar');
+        console.error(error);
+      }
     }
   };
 
