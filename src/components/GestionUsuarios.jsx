@@ -30,14 +30,14 @@ export default function GestionUsuarios() {
 
   // ESCUCHAR EN TIEMPO REAL DESDE REALTIME DATABASE
   useEffect(() => {
-    const docentesRef = ref(db, 'laboratorio/usuarios'); 
+    // Volvemos a leer de 'docentes' para tener todos los datos completos de la web
+    const docentesRef = ref(db, 'docentes'); 
+    
     const unsub = onValue(docentesRef, (snapshot) => {
       const data = snapshot.val();
-      
-      // ESTE ES EL CAMBIO: Extraemos la llave (key) de Firebase para usarla como 'id'
       const list = data ? Object.entries(data).map(([key, value]) => ({
         ...value,
-        id: key // Le asignamos el ID real de Firebase
+        id: key
       })) : [];
       
       setDocentes(list);
