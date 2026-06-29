@@ -49,12 +49,16 @@ export default function Dashboard() {
       }
     });
 
-    // 4. Escuchar Solicitudes Móviles para contar pendientes
-    onValue(ref(db, 'solicitudes'), (snapshot) => {
+    // 4. Escuchar Reservas Móviles para contar pendientes
+    onValue(ref(db, 'reservas'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const list = Object.keys(data).map(key => data[key]);
-        const pendientes = list.filter(s => s.estado === 'PENDIENTE').length;
+        // Convertimos el objeto en un arreglo
+        const list = Object.values(data);
+        
+        // Filtramos las que estén pendientes (ignorando mayúsculas/minúsculas por seguridad)
+        const pendientes = list.filter(s => s.estado && s.estado.toLowerCase() === 'pendiente').length;
+        
         setReservasPendientes(pendientes);
       } else {
         setReservasPendientes(0);
