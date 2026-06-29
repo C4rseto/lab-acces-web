@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase'; 
 import { ref, onValue, set, remove } from 'firebase/database';
 
-// --- FUNCIONES GENERADORAS AUTOMÁTICAS ---
+// --- FUNCIONES GENERADORAS ---
 const generarUID = () => {
   const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
@@ -12,17 +12,26 @@ const generarUID = () => {
   return result;
 };
 
+// Generador de PIN (ahora de 4 dígitos)
 const generarPIN = () => {
   let result = '';
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 4; i++) {
     result += Math.floor(Math.random() * 10).toString();
   }
   return result;
 };
 
+// Motor criptográfico SHA-256
+const hashearSHA256 = async (texto) => {
+  const msgBuffer = new TextEncoder().encode(texto);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
 export default function GestionUsuarios() {
   const [docentes, setDocentes] = useState([]);
-  const [mostrarFormulario, setMostrarFormulario] = useState(false); // <-- NUEVO ESTADO
+  const [mostrarFormulario, setMostrarFormulario] = useState(false); 
   
   const [nombre, setNombre] = useState('');
   const [correo, setCorreo] = useState(''); 
@@ -81,15 +90,41 @@ export default function GestionUsuarios() {
     setNombre(docente.nombre || '');
     setCorreo(docente.correo || ''); 
     setUid(docente.uid || generarUID()); 
-    setPin(docente.pin || generarPIN()); 
+    setPin(''); // Se deja en blanco visualmente para no mostrar el hash largo
     setLab(docente.laboratorio || '💻 Lab. Cómputo');
     setHorariosEdicion(docente.horarios ? [...docente.horarios] : []);
-    setMostrarFormulario(true); // <-- Muestra el formulario al editar
+    setMostrarFormulario(true); 
   };
 
   const guardarDocente = async () => {
     if (!nombre || !uid) return lanzarToast('⚠️ Completa Nombre y UID');
     if (horariosEdicion.length === 0) return lanzarToast('⚠️ Añade al menos un horario');
+
+    // 1. BLOQUEO DE UID DUPLICADA
+    const uidDuplicado = docentes.some(doc => 
+      doc.uid === uid.toUpperCase() && doc.id !== docenteEnEdicion
+    );
+    
+    if (uidDuplicado) {
+      return lanzarToast('🛑 Ese UID de tarjeta ya está en uso por otra persona');
+    }
+
+    // 2. LÓGICA DE DOBLE CIFRADO DEL PIN
+    let pinSHA = '';
+    let pinApp = '';
+
+    if (docenteEnEdicion && !pin) {
+      // Si estamos editando y el campo está vacío, conservamos los candados actuales
+      const docActual = docentes.find(d => d.id === docenteEnEdicion);
+      pinSHA = docActual?.pin || '';
+      pinApp = docActual?.pin_app || '';
+    } else if (pin.length === 4) {
+      // Generamos SHA-256 para el hardware y Base64 para la app móvil
+      pinSHA = await hashearSHA256(pin); 
+      pinApp = btoa(pin); 
+    } else {
+      return lanzarToast('⚠️ El PIN debe ser exactamente de 4 números');
+    }
 
     const idUnico = docenteEnEdicion ? docenteEnEdicion : crypto.randomUUID();
     
@@ -98,7 +133,8 @@ export default function GestionUsuarios() {
       nombre,
       correo,
       uid: uid.toUpperCase(),
-      pin: pin,
+      pin: pinSHA,
+      pin_app: pinApp,
       laboratorio,
       horarios: horariosEdicion,
       estado: docenteEnEdicion ? docentes.find(d => d.id === idUnico)?.estado || 'Habilitado' : 'Habilitado'
@@ -112,7 +148,8 @@ export default function GestionUsuarios() {
         laboratorio: docenteData.laboratorio,
         habilitado: docenteData.estado === 'Habilitado',
         uid: docenteData.uid,
-        pin: docenteData.pin
+        pin: docenteData.pin,
+        pin_app: docenteData.pin_app
       });
 
       lanzarToast(docenteEnEdicion ? '¡Editado correctamente! ✏️' : '¡Usuario creado! ⚡');
@@ -155,12 +192,12 @@ export default function GestionUsuarios() {
     setPin(generarPIN()); 
     setHorariosEdicion([]);
     setRelojActivo(null);
-    setMostrarFormulario(false); // <-- Oculta el formulario al terminar
+    setMostrarFormulario(false); 
   };
 
   const abrirNuevoUsuario = () => {
-    limpiarFormulario(); // Limpia cualquier dato previo
-    setMostrarFormulario(true); // Abre el formulario
+    limpiarFormulario(); 
+    setMostrarFormulario(true); 
   };
 
   return (
@@ -172,7 +209,6 @@ export default function GestionUsuarios() {
         </div>
       )}
 
-      {/* BOTÓN NUEVO USUARIO (Solo se ve si el formulario está cerrado) */}
       {!mostrarFormulario && (
         <div className="flex justify-end">
           <button 
@@ -186,7 +222,6 @@ export default function GestionUsuarios() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* FORMULARIO (Se oculta o muestra dependiendo del estado) */}
         {mostrarFormulario && (
           <div className="bg-[#121B2A] p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col gap-4 h-fit lg:col-span-1">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
@@ -209,10 +244,10 @@ export default function GestionUsuarios() {
               
               <div>
                 <div className="flex justify-between items-center">
-                  <label className="text-[10px] text-slate-400 uppercase font-bold">Código PIN (6 Números)</label>
+                  <label className="text-[10px] text-slate-400 uppercase font-bold">Código PIN (4 Números)</label>
                   {!docenteEnEdicion && <button onClick={() => setPin(generarPIN())} className="text-[9px] text-[#0BB885] bg-transparent border-0 cursor-pointer font-bold">↻ Generar</button>}
                 </div>
-                <input type="text" maxLength="6" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono tracking-[0.2em] outline-none focus:border-[#0BB885]" />
+                <input type="text" maxLength="4" placeholder={docenteEnEdicion ? "Vacío = Conservar actual" : ""} value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono tracking-[0.2em] outline-none focus:border-[#0BB885]" />
               </div>
 
               <div>
@@ -279,7 +314,7 @@ export default function GestionUsuarios() {
           </div>
         )}
 
-        {/* TABLA DE USUARIOS (Toma más espacio si el formulario está cerrado) */}
+        {/* TABLA DE USUARIOS */}
         <div className={`bg-[#121B2A] rounded-2xl border border-slate-800 shadow-xl overflow-hidden ${mostrarFormulario ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
           <div className="p-4 bg-[#0f172a] border-b border-slate-800 flex justify-between items-center">
             <h2 className="font-bold text-white text-sm">👥 Usuarios Registrados</h2>
@@ -296,7 +331,7 @@ export default function GestionUsuarios() {
                     </td>
                     <td className="p-3">
                       <div className="font-mono text-emerald-400">💳 {doc.uid}</div>
-                      <div className="text-orange-400 mt-0.5 font-mono">🔑 PIN: {doc.pin || '****'}</div>
+                      <div className="text-orange-400 mt-0.5 font-mono">🔑 PIN: {doc.pin ? '🔐 Cifrado' : '****'}</div>
                     </td>
                     <td className="p-3"><span className="text-blue-400 font-semibold">{doc.laboratorio}</span></td>
                     <td className="p-3"><div className="flex flex-col gap-1">{doc.horarios?.map((h, idx) => <span key={idx} className="bg-[#1e293b] px-1.5 py-0.5 rounded border border-slate-700 w-max text-[10px]">📅 {h.dia}: {h.inicio} - {h.fin}</span>)}</div></td>
