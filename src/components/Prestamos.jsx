@@ -6,14 +6,13 @@ export default function Prestamos() {
   const [pendientes, setPendientes] = useState([]);
   const [historial, setHistorial] = useState([]);
   const [seleccionada, setSeleccionada] = useState(null);
+  const [respuestaAdmin, setRespuestaAdmin] = useState(''); // <-- NUEVO ESTADO PARA LA RESPUESTA
 
   useEffect(() => {
-    // 1. AHORA LEEMOS DE LA CARPETA 'reservas'
     onValue(ref(db, 'reservas'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
         const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        // 2. BUSCAMOS EN MINÚSCULAS 'pendiente'
         setPendientes(lista.filter(s => s.estado === 'pendiente'));
         setHistorial(lista.filter(s => s.estado !== 'pendiente').reverse()); 
       } else {
@@ -25,11 +24,20 @@ export default function Prestamos() {
 
   const procesar = async (aprobada) => {
     if (seleccionada) {
-      // Guardamos en minúsculas para que el celular también lo entienda
       const nuevoEstado = aprobada ? 'aprobado' : 'denegado';
+      
+      // Guardamos el estado y la respuesta que escribió el administrador
       await set(ref(db, `reservas/${seleccionada.id}/estado`), nuevoEstado);
+      await set(ref(db, `reservas/${seleccionada.id}/respuestaAdmin`), respuestaAdmin || (aprobada ? 'Aprobado sin comentarios adicionales.' : 'Solicitud denegada.'));
+      
       setSeleccionada(null);
+      setRespuestaAdmin(''); // Limpiamos la caja de texto
     }
+  };
+
+  const cerrarModal = () => {
+    setSeleccionada(null);
+    setRespuestaAdmin('');
   };
 
   return (
@@ -55,9 +63,8 @@ export default function Prestamos() {
           <tbody className="divide-y divide-slate-800/40 text-xs">
             {pendientes.map(sol => (
               <tr key={sol.id} className="hover:bg-slate-800/20 transition-colors">
-                <td className="px-5 py-4"><div className="font-bold text-white text-sm">{sol.estudiante}</div><div className="text-slate-400 mt-0.5">{sol.equipos}</div></td>
+                <td className="px-5 py-4"><div className="font-bold text-white text-sm">{sol.estudiante}</div><div className="text-slate-400 mt-0.5 truncate max-w-[200px]">{sol.equipos}</div></td>
                 <td className="px-5 py-4 text-blue-400 font-semibold">{sol.laboratorio}</td>
-                {/* 3. AHORA MOSTRAMOS horaInicio y horaFin */}
                 <td className="px-5 py-4 text-white font-bold">{sol.fecha} <br/><span className="text-slate-400 font-normal">{sol.horaInicio} - {sol.horaFin}</span></td>
                 <td className="px-5 py-4 text-center"><button onClick={() => setSeleccionada(sol)} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-lg border-0 cursor-pointer shadow-lg transition-colors">Evaluar</button></td>
               </tr>
@@ -79,7 +86,7 @@ export default function Prestamos() {
                 <tr key={sol.id} className="hover:bg-slate-800/10">
                   <td className="px-5 py-3">
                     <div className="font-bold text-slate-300">{sol.estudiante}</div>
-                    <div className="text-[10px] text-slate-500">Motivo: {sol.motivo}</div>
+                    <div className="text-[10px] text-slate-500 truncate max-w-[250px]">Motivo: {sol.motivo}</div>
                   </td>
                   <td className="px-5 py-3 text-slate-400 text-[11px]">{sol.laboratorio}<br/>{sol.fecha} • {sol.horaInicio} - {sol.horaFin}</td>
                   <td className="px-5 py-3 text-right">
@@ -95,19 +102,103 @@ export default function Prestamos() {
         </div>
       </div>
 
-      {/* MODAL DE EVALUACIÓN */}
+      {/* NUEVO MODAL DE EVALUACIÓN (TIPO DISEÑO PRO) */}
       {seleccionada && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-[#0f172a] border border-slate-700 rounded-2xl p-6 max-w-md w-full flex flex-col gap-4 shadow-2xl">
-            <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-3">📄 Revisión de Permiso</h3>
-            <div className="border border-slate-700 rounded-xl p-4 bg-[#0B1320] flex flex-col gap-2">
-              <div className="text-blue-400 font-bold text-xs uppercase tracking-wider">{seleccionada.laboratorio}</div>
-              <div className="text-white font-semibold text-sm">📅 {seleccionada.fecha} <span className="text-slate-500 font-normal">| {seleccionada.horaInicio} - {seleccionada.horaFin}</span></div>
-              <div className="text-slate-300 italic mt-3 bg-[#121B2A] p-3 rounded-lg border border-slate-800/50 text-xs">" {seleccionada.motivo} "</div>
+          <div className="bg-[#0f172a] rounded-2xl w-full max-w-2xl border border-slate-700 shadow-2xl flex flex-col">
+            
+            {/* HEADER DEL MODAL */}
+            <div className="flex justify-between items-start p-6 border-b border-slate-800">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  📄 Revisión de Solicitud de Acceso
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Enviado por: <span className="font-semibold text-slate-200">{seleccionada.estudiante || 'Desconocido'}</span>
+                </p>
+              </div>
+              <button onClick={cerrarModal} className="bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-full w-8 h-8 flex items-center justify-center transition-colors">
+                ✕
+              </button>
             </div>
-            <div className="flex gap-3 mt-3">
-              <button onClick={() => procesar(false)} className="flex-1 bg-transparent border border-red-500/50 text-red-400 hover:bg-red-500/10 font-bold py-2.5 rounded-xl cursor-pointer transition-colors text-sm">❌ Denegar</button>
-              <button onClick={() => procesar(true)} className="flex-1 bg-[#0BB885] hover:bg-[#0aa376] text-white font-bold py-2.5 rounded-xl border-0 cursor-pointer transition-colors shadow-lg text-sm">✔️ Aprobar</button>
+
+            {/* CUERPO DEL MODAL */}
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
+              <div className="text-[11px] font-bold text-blue-400 mb-2 flex items-center gap-2 tracking-wider">
+                ⓘ DATOS DEL FORMULARIO (APP MÓVIL)
+              </div>
+
+              <div className="bg-[#121b2a] border border-slate-800 rounded-xl p-4">
+                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Laboratorio Solicitado</label>
+                <div className="text-[#0BB885] font-bold mt-1 text-lg flex items-center gap-2">
+                  🏢 {seleccionada.laboratorio}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-[#121b2a] border border-slate-800 rounded-xl p-4">
+                  <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Fecha Solicitada</label>
+                  <div className="text-slate-200 font-bold mt-1 text-sm">📅 {seleccionada.fecha}</div>
+                </div>
+                <div className="bg-[#121b2a] border border-slate-800 rounded-xl p-4">
+                  <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Hora Inicio - Hora Fin</label>
+                  <div className="text-orange-400 font-bold mt-1 text-sm">🕒 {seleccionada.horaInicio} - {seleccionada.horaFin}</div>
+                </div>
+              </div>
+
+              <div className="bg-[#121b2a] border border-slate-800 rounded-xl p-4">
+                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Motivo / Proyecto</label>
+                <div className="text-slate-300 italic mt-2 text-sm leading-relaxed">
+                  "{seleccionada.motivo || 'Sin motivo especificado'}"
+                </div>
+              </div>
+
+              {/* MOSTRAR EQUIPOS SI EXISTEN */}
+              {seleccionada.equipos && (
+                <div className="bg-[#121b2a] border border-blue-900/30 border-l-4 border-l-blue-500 rounded-r-xl p-4">
+                  <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Equipos Requeridos</label>
+                  <div className="text-blue-200 font-semibold mt-1 text-sm flex items-center gap-2">
+                    ⚡ {seleccionada.equipos}
+                  </div>
+                </div>
+              )}
+
+              {/* ZONA DE RESPUESTA */}
+              <div className="mt-6">
+                <label className="text-sm text-white font-bold flex items-center gap-2 mb-2">
+                  💬 Tu respuesta al alumno (Requerido)
+                </label>
+                <textarea 
+                  value={respuestaAdmin}
+                  onChange={(e) => setRespuestaAdmin(e.target.value)}
+                  className="w-full bg-[#121b2a] border border-slate-700 rounded-xl p-4 text-sm text-white min-h-[100px] outline-none focus:border-[#0BB885] transition-colors"
+                  placeholder="Redacta la respuesta que le llegará a la app del estudiante..."
+                ></textarea>
+                
+                {/* BOTONES DE RESPUESTA RÁPIDA (Opcional, muy útil) */}
+                <div className="flex items-center gap-2 mt-3 text-xs">
+                  <span className="text-slate-500 mr-1">Respuestas rápidas:</span>
+                  <button onClick={() => setRespuestaAdmin("Solicitud aprobada. Por favor dejar el laboratorio ordenado al terminar.")} className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded hover:bg-emerald-500/20 transition-colors">Aprobar con recordatorio</button>
+                  <button onClick={() => setRespuestaAdmin("Solicitud denegada. Hay un cruce de horario con una clase programada.")} className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-1 rounded hover:bg-red-500/20 transition-colors">Rechazar (Cruce de horario)</button>
+                </div>
+              </div>
+            </div>
+
+            {/* FOOTER - BOTONES DE ACCIÓN */}
+            <div className="p-6 border-t border-slate-800 flex justify-between items-center gap-4 bg-[#0B1320] rounded-b-2xl">
+              <button 
+                onClick={() => procesar(false)} 
+                className="flex-1 bg-transparent border border-slate-600 text-slate-300 font-bold py-3.5 rounded-xl hover:bg-slate-800 hover:text-white transition-colors"
+              >
+                Denegar
+              </button>
+              <button 
+                onClick={() => procesar(true)} 
+                className="flex-1 bg-[#0BB885] text-white font-bold py-3.5 rounded-xl hover:bg-[#0aa376] flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                Aprobar Solicitud
+              </button>
             </div>
           </div>
         </div>
