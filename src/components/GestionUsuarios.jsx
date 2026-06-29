@@ -22,16 +22,15 @@ const generarPIN = () => {
 
 export default function GestionUsuarios() {
   const [docentes, setDocentes] = useState([]);
+  const [mostrarFormulario, setMostrarFormulario] = useState(false); // <-- NUEVO ESTADO
+  
   const [nombre, setNombre] = useState('');
   const [correo, setCorreo] = useState(''); 
-  
-  // INICIAN CON VALORES AUTOMÁTICOS
   const [uid, setUid] = useState(generarUID());
   const [pin, setPin] = useState(generarPIN());
-  
   const [laboratorio, setLab] = useState('💻 Lab. Cómputo');
   
-  // Controles de Horarios y Reloj Popover
+  // Controles de Horarios y Reloj
   const [dia, setDia] = useState('Lunes');
   const [inicioHora, setInicioHora] = useState('10');
   const [inicioMin, setInicioMin] = useState('00');
@@ -81,10 +80,11 @@ export default function GestionUsuarios() {
     setDocenteEnEdicion(docente.id); 
     setNombre(docente.nombre || '');
     setCorreo(docente.correo || ''); 
-    setUid(docente.uid || generarUID()); // Si no tiene, genera uno
-    setPin(docente.pin || generarPIN()); // Si no tiene, genera uno
+    setUid(docente.uid || generarUID()); 
+    setPin(docente.pin || generarPIN()); 
     setLab(docente.laboratorio || '💻 Lab. Cómputo');
     setHorariosEdicion(docente.horarios ? [...docente.horarios] : []);
+    setMostrarFormulario(true); // <-- Muestra el formulario al editar
   };
 
   const guardarDocente = async () => {
@@ -151,10 +151,16 @@ export default function GestionUsuarios() {
     setDocenteEnEdicion(null);
     setNombre(''); 
     setCorreo(''); 
-    setUid(generarUID()); // Regenera UID al limpiar
-    setPin(generarPIN()); // Regenera PIN al limpiar
+    setUid(generarUID()); 
+    setPin(generarPIN()); 
     setHorariosEdicion([]);
     setRelojActivo(null);
+    setMostrarFormulario(false); // <-- Oculta el formulario al terminar
+  };
+
+  const abrirNuevoUsuario = () => {
+    limpiarFormulario(); // Limpia cualquier dato previo
+    setMostrarFormulario(true); // Abre el formulario
   };
 
   return (
@@ -166,101 +172,115 @@ export default function GestionUsuarios() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* FORMULARIO */}
-        <div className="bg-[#121B2A] p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col gap-4 h-fit">
-          <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-            <h2 className="text-[#0BB885] font-bold text-base">{docenteEnEdicion ? '✏️ Editar Credencial' : '👤 Nueva Credencial'}</h2>
-            {docenteEnEdicion && <button onClick={limpiarFormulario} className="text-xs font-bold text-red-400 bg-transparent border-0 cursor-pointer">Cancelar</button>}
-          </div>
-          
-          <div className="flex flex-col gap-3">
-            <div><label className="text-[10px] text-slate-400 uppercase font-bold">Nombre</label><input type="text" value={nombre} onChange={e => setNombre(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
-            
-            <div><label className="text-[10px] text-slate-400 uppercase font-bold">Correo Electrónico</label><input type="email" value={correo} onChange={e => setCorreo(e.target.value)} placeholder="ejemplo@correo.com" className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
-
-            {/* CONTROLES CON GENERACIÓN AUTOMÁTICA */}
-            <div>
-              <div className="flex justify-between items-center">
-                <label className="text-[10px] text-slate-400 uppercase font-bold">UID Tarjeta (3 Caracteres)</label>
-                {!docenteEnEdicion && <button onClick={() => setUid(generarUID())} className="text-[9px] text-[#0BB885] bg-transparent border-0 cursor-pointer font-bold">↻ Generar</button>}
-              </div>
-              <input type="text" maxLength="3" value={uid} onChange={e => setUid(e.target.value.toUpperCase())} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono uppercase outline-none focus:border-[#0BB885]" />
-            </div>
-            
-            <div>
-              <div className="flex justify-between items-center">
-                <label className="text-[10px] text-slate-400 uppercase font-bold">Código PIN (6 Números)</label>
-                {!docenteEnEdicion && <button onClick={() => setPin(generarPIN())} className="text-[9px] text-[#0BB885] bg-transparent border-0 cursor-pointer font-bold">↻ Generar</button>}
-              </div>
-              <input type="text" maxLength="6" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono tracking-[0.2em] outline-none focus:border-[#0BB885]" />
-            </div>
-
-            <div>
-              <label className="text-[10px] text-slate-400 uppercase font-bold">Laboratorio</label>
-              <select value={laboratorio} onChange={e => setLab(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white cursor-pointer outline-none focus:border-[#0BB885]">
-                <option value="💻 Lab. Cómputo">💻 Lab. Cómputo</option><option value="⚡ Lab. Electrónica">⚡ Lab. Electrónica</option><option value="🧪 Lab. Química">🧪 Lab. Química</option>
-              </select>
-            </div>
-
-            {/* SECCIÓN DEL RELOJ PERSONALIZADO POPOVER */}
-            <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 mt-1 relative">
-              <label className="text-[10px] text-[#0BB885] uppercase font-bold block mb-2">Bloque de Horario</label>
-              <div className="flex flex-col gap-2">
-                <select value={dia} onChange={e => setDia(e.target.value)} className="w-full bg-[#192333] border border-slate-700 rounded-md p-1.5 text-xs text-white outline-none"><option>Lunes</option><option>Martes</option><option>Miércoles</option><option>Jueves</option><option>Viernes</option><option>Sábado</option></select>
-                
-                <div className="flex gap-2 relative">
-                  <div onClick={() => setRelojActivo('inicio')} className={`w-1/2 border rounded-md bg-[#192333] p-2 flex items-center justify-center relative cursor-pointer ${relojActivo === 'inicio' ? 'border-[#0BB885]' : 'border-slate-700'}`}>
-                    <span className="absolute -top-2.5 left-1 bg-[#0f172a] px-1 text-[8px] text-slate-500 uppercase font-bold">Inicio</span>
-                    <span className="text-white text-xs font-bold">{inicioHora}:{inicioMin} <span className="text-[#0BB885]">{inicioAmPm}</span></span>
-                  </div>
-                  <div onClick={() => setRelojActivo('fin')} className={`w-1/2 border rounded-md bg-[#192333] p-2 flex items-center justify-center relative cursor-pointer ${relojActivo === 'fin' ? 'border-orange-400' : 'border-slate-700'}`}>
-                    <span className="absolute -top-2.5 left-1 bg-[#0f172a] px-1 text-[8px] text-slate-500 uppercase font-bold">Fin</span>
-                    <span className="text-white text-xs font-bold">{finHora}:{finMin} <span className="text-orange-400">{finAmPm}</span></span>
-                  </div>
-
-                  {relojActivo && (
-                    <div className="absolute top-11 left-0 z-50 bg-[#0B1320] border border-slate-700 shadow-2xl rounded-xl p-3 w-[250px]">
-                      <div className="flex justify-between text-[9px] text-slate-500 font-bold mb-1.5 text-center"><span className="w-1/3">HORA</span><span className="w-1/3">MINUTO</span><span className="w-1/3">FORMATO</span></div>
-                      
-                      <div className="flex gap-1 h-36">
-                        <div className="w-1/3 overflow-y-auto flex flex-col gap-0.5 pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
-                          {listaHoras.map(h => <button key={h} onClick={() => relojActivo === 'inicio' ? setInicioHora(h) : setFinHora(h)} className={`py-1 text-xs font-bold rounded border-0 ${((relojActivo === 'inicio' ? inicioHora : finHora) === h) ? 'bg-[#0BB885] text-white' : 'bg-transparent text-slate-400'}`}>{h}</button>)}
-                        </div>
-                        <div className="w-1/3 overflow-y-auto flex flex-col gap-0.5 border-l border-slate-800 pl-1 pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
-                          {listaMinutos.map(m => <button key={m} onClick={() => relojActivo === 'inicio' ? setInicioMin(m) : setFinMin(m)} className={`py-1 text-xs font-bold rounded border-0 ${((relojActivo === 'inicio' ? inicioMin : finMin) === m) ? 'bg-[#0BB885] text-white' : 'bg-transparent text-slate-400'}`}>{m}</button>)}
-                        </div>
-                        <div className="w-1/3 flex flex-col gap-1 border-l border-slate-800 pl-1 justify-center">
-                          {['AM','PM'].map(f => <button key={f} onClick={() => relojActivo === 'inicio' ? setInicioAmPm(f) : setFinAmPm(f)} className={`py-1.5 text-xs font-bold rounded-md border-0 ${(relojActivo === 'inicio' ? inicioAmPm : finAmPm) === f ? 'bg-[#0BB885] text-white' : 'bg-[#1e293b] text-slate-400'}`}>{f}</button>)}
-                          <button onClick={() => setRelojActivo(null)} className="mt-2 bg-slate-800 text-white text-[10px] py-1 rounded font-bold border-0 cursor-pointer hover:bg-slate-700 transition-colors">Listo</button>
-                        </div>
-                      </div>
-
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <button onClick={agregarHorario} className="w-full bg-[#1e293b] hover:bg-slate-700 text-slate-300 border border-slate-600 rounded-md py-1.5 mt-3 text-xs font-bold cursor-pointer transition-colors">+ Añadir bloque</button>
-
-              {horariosEdicion.length > 0 && (
-                <div className="mt-3 flex flex-col gap-1.5 border-t border-slate-700/50 pt-2">
-                  {horariosEdicion.map((h, i) => (
-                    <div key={i} className="flex justify-between items-center bg-[#121B2A] border border-slate-700 px-2.5 py-1.5 rounded-lg">
-                      <span className="text-xs text-white">📅 {h.dia}: <span className="text-slate-400">{h.inicio} - {h.fin}</span></span>
-                      <button onClick={() => removerHorario(i)} className="text-red-400 bg-red-500/10 border border-red-500/20 w-5 h-5 rounded flex items-center justify-center cursor-pointer">✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button onClick={guardarDocente} className="w-full bg-[#0BB885] text-white font-bold rounded-lg py-2.5 mt-2 border-0 cursor-pointer shadow-lg hover:bg-[#0aa376] transition-colors">Guardar y Sincronizar</button>
-          </div>
+      {/* BOTÓN NUEVO USUARIO (Solo se ve si el formulario está cerrado) */}
+      {!mostrarFormulario && (
+        <div className="flex justify-end">
+          <button 
+            onClick={abrirNuevoUsuario} 
+            className="bg-[#0BB885] text-white px-4 py-2 rounded-lg font-bold hover:bg-[#0aa376] transition-colors border-0 cursor-pointer shadow-lg"
+          >
+            + Nuevo Usuario
+          </button>
         </div>
+      )}
 
-        {/* TABLA DE USUARIOS */}
-        <div className="bg-[#121B2A] rounded-2xl border border-slate-800 shadow-xl overflow-hidden lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* FORMULARIO (Se oculta o muestra dependiendo del estado) */}
+        {mostrarFormulario && (
+          <div className="bg-[#121B2A] p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col gap-4 h-fit lg:col-span-1">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h2 className="text-[#0BB885] font-bold text-base">{docenteEnEdicion ? '✏️ Editar Credencial' : '👤 Nueva Credencial'}</h2>
+              <button onClick={limpiarFormulario} className="text-xs font-bold text-red-400 bg-transparent border-0 cursor-pointer">Cancelar</button>
+            </div>
+            
+            <div className="flex flex-col gap-3">
+              <div><label className="text-[10px] text-slate-400 uppercase font-bold">Nombre</label><input type="text" value={nombre} onChange={e => setNombre(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
+              
+              <div><label className="text-[10px] text-slate-400 uppercase font-bold">Correo Electrónico</label><input type="email" value={correo} onChange={e => setCorreo(e.target.value)} placeholder="ejemplo@correo.com" className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
+
+              <div>
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] text-slate-400 uppercase font-bold">UID Tarjeta (3 Caracteres)</label>
+                  {!docenteEnEdicion && <button onClick={() => setUid(generarUID())} className="text-[9px] text-[#0BB885] bg-transparent border-0 cursor-pointer font-bold">↻ Generar</button>}
+                </div>
+                <input type="text" maxLength="3" value={uid} onChange={e => setUid(e.target.value.toUpperCase())} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono uppercase outline-none focus:border-[#0BB885]" />
+              </div>
+              
+              <div>
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] text-slate-400 uppercase font-bold">Código PIN (6 Números)</label>
+                  {!docenteEnEdicion && <button onClick={() => setPin(generarPIN())} className="text-[9px] text-[#0BB885] bg-transparent border-0 cursor-pointer font-bold">↻ Generar</button>}
+                </div>
+                <input type="text" maxLength="6" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono tracking-[0.2em] outline-none focus:border-[#0BB885]" />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-slate-400 uppercase font-bold">Laboratorio</label>
+                <select value={laboratorio} onChange={e => setLab(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white cursor-pointer outline-none focus:border-[#0BB885]">
+                  <option value="💻 Lab. Cómputo">💻 Lab. Cómputo</option><option value="⚡ Lab. Electrónica">⚡ Lab. Electrónica</option><option value="🧪 Lab. Química">🧪 Lab. Química</option>
+                </select>
+              </div>
+
+              {/* SECCIÓN DEL RELOJ PERSONALIZADO POPOVER */}
+              <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 mt-1 relative">
+                <label className="text-[10px] text-[#0BB885] uppercase font-bold block mb-2">Bloque de Horario</label>
+                <div className="flex flex-col gap-2">
+                  <select value={dia} onChange={e => setDia(e.target.value)} className="w-full bg-[#192333] border border-slate-700 rounded-md p-1.5 text-xs text-white outline-none"><option>Lunes</option><option>Martes</option><option>Miércoles</option><option>Jueves</option><option>Viernes</option><option>Sábado</option></select>
+                  
+                  <div className="flex gap-2 relative">
+                    <div onClick={() => setRelojActivo('inicio')} className={`w-1/2 border rounded-md bg-[#192333] p-2 flex items-center justify-center relative cursor-pointer ${relojActivo === 'inicio' ? 'border-[#0BB885]' : 'border-slate-700'}`}>
+                      <span className="absolute -top-2.5 left-1 bg-[#0f172a] px-1 text-[8px] text-slate-500 uppercase font-bold">Inicio</span>
+                      <span className="text-white text-xs font-bold">{inicioHora}:{inicioMin} <span className="text-[#0BB885]">{inicioAmPm}</span></span>
+                    </div>
+                    <div onClick={() => setRelojActivo('fin')} className={`w-1/2 border rounded-md bg-[#192333] p-2 flex items-center justify-center relative cursor-pointer ${relojActivo === 'fin' ? 'border-orange-400' : 'border-slate-700'}`}>
+                      <span className="absolute -top-2.5 left-1 bg-[#0f172a] px-1 text-[8px] text-slate-500 uppercase font-bold">Fin</span>
+                      <span className="text-white text-xs font-bold">{finHora}:{finMin} <span className="text-orange-400">{finAmPm}</span></span>
+                    </div>
+
+                    {relojActivo && (
+                      <div className="absolute top-11 left-0 z-50 bg-[#0B1320] border border-slate-700 shadow-2xl rounded-xl p-3 w-[250px]">
+                        <div className="flex justify-between text-[9px] text-slate-500 font-bold mb-1.5 text-center"><span className="w-1/3">HORA</span><span className="w-1/3">MINUTO</span><span className="w-1/3">FORMATO</span></div>
+                        
+                        <div className="flex gap-1 h-36">
+                          <div className="w-1/3 overflow-y-auto flex flex-col gap-0.5 pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+                            {listaHoras.map(h => <button key={h} onClick={() => relojActivo === 'inicio' ? setInicioHora(h) : setFinHora(h)} className={`py-1 text-xs font-bold rounded border-0 ${((relojActivo === 'inicio' ? inicioHora : finHora) === h) ? 'bg-[#0BB885] text-white' : 'bg-transparent text-slate-400'}`}>{h}</button>)}
+                          </div>
+                          <div className="w-1/3 overflow-y-auto flex flex-col gap-0.5 border-l border-slate-800 pl-1 pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+                            {listaMinutos.map(m => <button key={m} onClick={() => relojActivo === 'inicio' ? setInicioMin(m) : setFinMin(m)} className={`py-1 text-xs font-bold rounded border-0 ${((relojActivo === 'inicio' ? inicioMin : finMin) === m) ? 'bg-[#0BB885] text-white' : 'bg-transparent text-slate-400'}`}>{m}</button>)}
+                          </div>
+                          <div className="w-1/3 flex flex-col gap-1 border-l border-slate-800 pl-1 justify-center">
+                            {['AM','PM'].map(f => <button key={f} onClick={() => relojActivo === 'inicio' ? setInicioAmPm(f) : setFinAmPm(f)} className={`py-1.5 text-xs font-bold rounded-md border-0 ${(relojActivo === 'inicio' ? inicioAmPm : finAmPm) === f ? 'bg-[#0BB885] text-white' : 'bg-[#1e293b] text-slate-400'}`}>{f}</button>)}
+                            <button onClick={() => setRelojActivo(null)} className="mt-2 bg-slate-800 text-white text-[10px] py-1 rounded font-bold border-0 cursor-pointer hover:bg-slate-700 transition-colors">Listo</button>
+                          </div>
+                        </div>
+
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <button onClick={agregarHorario} className="w-full bg-[#1e293b] hover:bg-slate-700 text-slate-300 border border-slate-600 rounded-md py-1.5 mt-3 text-xs font-bold cursor-pointer transition-colors">+ Añadir bloque</button>
+
+                {horariosEdicion.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-1.5 border-t border-slate-700/50 pt-2">
+                    {horariosEdicion.map((h, i) => (
+                      <div key={i} className="flex justify-between items-center bg-[#121B2A] border border-slate-700 px-2.5 py-1.5 rounded-lg">
+                        <span className="text-xs text-white">📅 {h.dia}: <span className="text-slate-400">{h.inicio} - {h.fin}</span></span>
+                        <button onClick={() => removerHorario(i)} className="text-red-400 bg-red-500/10 border border-red-500/20 w-5 h-5 rounded flex items-center justify-center cursor-pointer">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button onClick={guardarDocente} className="w-full bg-[#0BB885] text-white font-bold rounded-lg py-2.5 mt-2 border-0 cursor-pointer shadow-lg hover:bg-[#0aa376] transition-colors">Guardar y Sincronizar</button>
+            </div>
+          </div>
+        )}
+
+        {/* TABLA DE USUARIOS (Toma más espacio si el formulario está cerrado) */}
+        <div className={`bg-[#121B2A] rounded-2xl border border-slate-800 shadow-xl overflow-hidden ${mostrarFormulario ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
           <div className="p-4 bg-[#0f172a] border-b border-slate-800 flex justify-between items-center">
             <h2 className="font-bold text-white text-sm">👥 Usuarios Registrados</h2>
           </div>
