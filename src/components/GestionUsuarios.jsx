@@ -76,12 +76,8 @@ export default function GestionUsuarios() {
   const guardarDocente = async () => {
     if (!nombre || !uid) return lanzarToast('⚠️ Completa Nombre y UID');
     
-    // OJO: En tu imagen veo que Carlos y Axel no tienen horarios. 
-    // Si quieres que el sistema te deje guardarlos sin horarios, puedes comentar/borrar la siguiente línea:
     if (horariosEdicion.length === 0) return lanzarToast('⚠️ Añade al menos un horario');
 
-    // Si estamos editando (existe docenteEnEdicion), usamos SU MISMO ID para sobreescribir. 
-    // Si es un usuario nuevo, le creamos uno con crypto.randomUUID().
     const idUnico = docenteEnEdicion ? docenteEnEdicion : crypto.randomUUID();
     
     const docenteData = {
@@ -89,25 +85,26 @@ export default function GestionUsuarios() {
       nombre,
       correo,
       uid: uid.toUpperCase(),
-      pin: pin || '1234',
+      pin: pin || '1234', // Si dejas el espacio en blanco, pone 1234 por seguridad
       laboratorio,
       horarios: horariosEdicion,
       estado: docenteEnEdicion ? docentes.find(d => d.id === idUnico)?.estado || 'Habilitado' : 'Habilitado'
     };
 
     try {
-      // Guardamos en ambas rutas usando exactamente EL MISMO ID
+      // 1. Guarda todos los datos en la tabla web
       await set(ref(db, `docentes/${idUnico}`), docenteData);
       
+      // 2. Guarda los datos operativos (¡AHORA CON EL PIN INCLUIDO!)
       await set(ref(db, `laboratorio/usuarios/${idUnico}`), {
         nombre: docenteData.nombre,
         correo: docenteData.correo,
         laboratorio: docenteData.laboratorio,
         habilitado: docenteData.estado === 'Habilitado',
-        uid: docenteData.uid
+        uid: docenteData.uid,
+        pin: docenteData.pin // <-- ¡AQUÍ ESTÁ LA SOLUCIÓN!
       });
 
-      // Mensaje dinámico para saber qué hicimos
       lanzarToast(docenteEnEdicion ? '¡Editado correctamente! ✏️' : '¡Usuario creado! ⚡');
       limpiarFormulario();
     } catch (e) {
