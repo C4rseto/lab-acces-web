@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase'; 
 import { ref, onValue, set, remove } from 'firebase/database';
 
-// --- FUNCIONES GENERADORAS ---
 const generarUID = () => {
   const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
@@ -12,23 +11,6 @@ const generarUID = () => {
   return result;
 };
 
-// Generador de PIN (ahora de 4 dígitos)
-const generarPIN = () => {
-  let result = '';
-  for (let i = 0; i < 4; i++) {
-    result += Math.floor(Math.random() * 10).toString();
-  }
-  return result;
-};
-
-// Motor criptográfico SHA-256
-const hashearSHA256 = async (texto) => {
-  const msgBuffer = new TextEncoder().encode(texto);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-};
-
 export default function GestionUsuarios() {
   const [docentes, setDocentes] = useState([]);
   const [mostrarFormulario, setMostrarFormulario] = useState(false); 
@@ -36,10 +18,8 @@ export default function GestionUsuarios() {
   const [nombre, setNombre] = useState('');
   const [correo, setCorreo] = useState(''); 
   const [uid, setUid] = useState(generarUID());
-  const [pin, setPin] = useState(generarPIN());
   const [laboratorio, setLab] = useState('💻 Lab. Cómputo');
   
-  // Controles de Horarios y Reloj
   const [dia, setDia] = useState('Lunes');
   const [inicioHora, setInicioHora] = useState('10');
   const [inicioMin, setInicioMin] = useState('00');
@@ -90,51 +70,29 @@ export default function GestionUsuarios() {
     setNombre(docente.nombre || '');
     setCorreo(docente.correo || ''); 
     setUid(docente.uid || generarUID()); 
-    setPin(''); // Se deja en blanco visualmente para no mostrar el hash largo
     setLab(docente.laboratorio || '💻 Lab. Cómputo');
     setHorariosEdicion(docente.horarios ? [...docente.horarios] : []);
     setMostrarFormulario(true); 
   };
 
   const guardarDocente = async () => {
-    if (!nombre || !uid) return lanzarToast('⚠️ Completa Nombre y UID');
+    if (!nombre || !uid || !correo) return lanzarToast('⚠️ Completa Nombre, Correo y UID');
     if (horariosEdicion.length === 0) return lanzarToast('⚠️ Añade al menos un horario');
 
-    // 1. BLOQUEO DE UID DUPLICADA
-    const uidDuplicado = docentes.some(doc => 
-      doc.uid === uid.toUpperCase() && doc.id !== docenteEnEdicion
-    );
-    
-    if (uidDuplicado) {
-      return lanzarToast('🛑 Ese UID de tarjeta ya está en uso por otra persona');
-    }
-
-    // 2. LÓGICA DE DOBLE CIFRADO DEL PIN
-    let pinSHA = '';
-    let pinApp = '';
-
-    if (docenteEnEdicion && !pin) {
-      // Si estamos editando y el campo está vacío, conservamos los candados actuales
-      const docActual = docentes.find(d => d.id === docenteEnEdicion);
-      pinSHA = docActual?.pin || '';
-      pinApp = docActual?.pin_app || '';
-    } else if (pin.length === 4) {
-      // Generamos SHA-256 para el hardware y Base64 para la app móvil
-      pinSHA = await hashearSHA256(pin); 
-      pinApp = btoa(pin); 
-    } else {
-      return lanzarToast('⚠️ El PIN debe ser exactamente de 4 números');
-    }
+    const uidDuplicado = docentes.some(doc => doc.uid === uid.toUpperCase() && doc.id !== docenteEnEdicion);
+    if (uidDuplicado) return lanzarToast('🛑 Ese UID de tarjeta ya está en uso');
 
     const idUnico = docenteEnEdicion ? docenteEnEdicion : crypto.randomUUID();
+    
+    // Si estamos editando, rescatamos el PIN que el usuario ya creó. Si es nuevo, va vacío.
+    const pinExistente = docenteEnEdicion ? docentes.find(d => d.id === idUnico)?.pin || '' : '';
     
     const docenteData = {
       id: idUnico,
       nombre,
       correo,
       uid: uid.toUpperCase(),
-      pin: pinSHA,
-      pin_app: pinApp,
+      pin: pinExistente, // Conserva el PIN cifrado del usuario
       laboratorio,
       horarios: horariosEdicion,
       estado: docenteEnEdicion ? docentes.find(d => d.id === idUnico)?.estado || 'Habilitado' : 'Habilitado'
@@ -148,8 +106,7 @@ export default function GestionUsuarios() {
         laboratorio: docenteData.laboratorio,
         habilitado: docenteData.estado === 'Habilitado',
         uid: docenteData.uid,
-        pin: docenteData.pin,
-        pin_app: docenteData.pin_app
+        pin: docenteData.pin
       });
 
       lanzarToast(docenteEnEdicion ? '¡Editado correctamente! ✏️' : '¡Usuario creado! ⚡');
@@ -186,18 +143,8 @@ export default function GestionUsuarios() {
 
   const limpiarFormulario = () => {
     setDocenteEnEdicion(null);
-    setNombre(''); 
-    setCorreo(''); 
-    setUid(generarUID()); 
-    setPin(generarPIN()); 
-    setHorariosEdicion([]);
-    setRelojActivo(null);
-    setMostrarFormulario(false); 
-  };
-
-  const abrirNuevoUsuario = () => {
-    limpiarFormulario(); 
-    setMostrarFormulario(true); 
+    setNombre(''); setCorreo(''); setUid(generarUID());
+    setHorariosEdicion([]); setRelojActivo(null); setMostrarFormulario(false); 
   };
 
   return (
@@ -211,10 +158,7 @@ export default function GestionUsuarios() {
 
       {!mostrarFormulario && (
         <div className="flex justify-end">
-          <button 
-            onClick={abrirNuevoUsuario} 
-            className="bg-[#0BB885] text-white px-4 py-2 rounded-lg font-bold hover:bg-[#0aa376] transition-colors border-0 cursor-pointer shadow-lg"
-          >
+          <button onClick={() => { limpiarFormulario(); setMostrarFormulario(true); }} className="bg-[#0BB885] text-white px-4 py-2 rounded-lg font-bold hover:bg-[#0aa376] transition-colors border-0 cursor-pointer shadow-lg">
             + Nuevo Usuario
           </button>
         </div>
@@ -231,7 +175,6 @@ export default function GestionUsuarios() {
             
             <div className="flex flex-col gap-3">
               <div><label className="text-[10px] text-slate-400 uppercase font-bold">Nombre</label><input type="text" value={nombre} onChange={e => setNombre(e.target.value)} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
-              
               <div><label className="text-[10px] text-slate-400 uppercase font-bold">Correo Electrónico</label><input type="email" value={correo} onChange={e => setCorreo(e.target.value)} placeholder="ejemplo@correo.com" className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0BB885]" /></div>
 
               <div>
@@ -241,14 +184,6 @@ export default function GestionUsuarios() {
                 </div>
                 <input type="text" maxLength="3" value={uid} onChange={e => setUid(e.target.value.toUpperCase())} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono uppercase outline-none focus:border-[#0BB885]" />
               </div>
-              
-              <div>
-                <div className="flex justify-between items-center">
-                  <label className="text-[10px] text-slate-400 uppercase font-bold">Código PIN (4 Números)</label>
-                  {!docenteEnEdicion && <button onClick={() => setPin(generarPIN())} className="text-[9px] text-[#0BB885] bg-transparent border-0 cursor-pointer font-bold">↻ Generar</button>}
-                </div>
-                <input type="text" maxLength="4" placeholder={docenteEnEdicion ? "Vacío = Conservar actual" : ""} value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))} className="w-full mt-1 bg-[#192333] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono tracking-[0.2em] outline-none focus:border-[#0BB885]" />
-              </div>
 
               <div>
                 <label className="text-[10px] text-slate-400 uppercase font-bold">Laboratorio</label>
@@ -257,7 +192,6 @@ export default function GestionUsuarios() {
                 </select>
               </div>
 
-              {/* SECCIÓN DEL RELOJ PERSONALIZADO POPOVER */}
               <div className="bg-[#0f172a] p-3 rounded-xl border border-slate-800 mt-1 relative">
                 <label className="text-[10px] text-[#0BB885] uppercase font-bold block mb-2">Bloque de Horario</label>
                 <div className="flex flex-col gap-2">
@@ -276,7 +210,6 @@ export default function GestionUsuarios() {
                     {relojActivo && (
                       <div className="absolute top-11 left-0 z-50 bg-[#0B1320] border border-slate-700 shadow-2xl rounded-xl p-3 w-[250px]">
                         <div className="flex justify-between text-[9px] text-slate-500 font-bold mb-1.5 text-center"><span className="w-1/3">HORA</span><span className="w-1/3">MINUTO</span><span className="w-1/3">FORMATO</span></div>
-                        
                         <div className="flex gap-1 h-36">
                           <div className="w-1/3 overflow-y-auto flex flex-col gap-0.5 pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
                             {listaHoras.map(h => <button key={h} onClick={() => relojActivo === 'inicio' ? setInicioHora(h) : setFinHora(h)} className={`py-1 text-xs font-bold rounded border-0 ${((relojActivo === 'inicio' ? inicioHora : finHora) === h) ? 'bg-[#0BB885] text-white' : 'bg-transparent text-slate-400'}`}>{h}</button>)}
@@ -289,7 +222,6 @@ export default function GestionUsuarios() {
                             <button onClick={() => setRelojActivo(null)} className="mt-2 bg-slate-800 text-white text-[10px] py-1 rounded font-bold border-0 cursor-pointer hover:bg-slate-700 transition-colors">Listo</button>
                           </div>
                         </div>
-
                       </div>
                     )}
                   </div>
@@ -314,7 +246,6 @@ export default function GestionUsuarios() {
           </div>
         )}
 
-        {/* TABLA DE USUARIOS */}
         <div className={`bg-[#121B2A] rounded-2xl border border-slate-800 shadow-xl overflow-hidden ${mostrarFormulario ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
           <div className="p-4 bg-[#0f172a] border-b border-slate-800 flex justify-between items-center">
             <h2 className="font-bold text-white text-sm">👥 Usuarios Registrados</h2>
@@ -331,7 +262,9 @@ export default function GestionUsuarios() {
                     </td>
                     <td className="p-3">
                       <div className="font-mono text-emerald-400">💳 {doc.uid}</div>
-                      <div className="text-orange-400 mt-0.5 font-mono">🔑 PIN: {doc.pin ? '🔐 Cifrado' : '****'}</div>
+                      <div className="text-orange-400 mt-0.5 font-mono">
+                        {doc.pin ? '🔑 PIN: 🔐 Cifrado' : '⚠️ Sin PIN'}
+                      </div>
                     </td>
                     <td className="p-3"><span className="text-blue-400 font-semibold">{doc.laboratorio}</span></td>
                     <td className="p-3"><div className="flex flex-col gap-1">{doc.horarios?.map((h, idx) => <span key={idx} className="bg-[#1e293b] px-1.5 py-0.5 rounded border border-slate-700 w-max text-[10px]">📅 {h.dia}: {h.inicio} - {h.fin}</span>)}</div></td>
