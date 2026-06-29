@@ -120,7 +120,17 @@ export default function GestionUsuarios() {
 
   const alternarEstado = async (docente) => {
     const nuevoEstado = docente.estado === 'Habilitado' ? 'Deshabilitado' : 'Habilitado';
-    await set(ref(db, `docentes/${docente.id}/estado`), nuevoEstado);
+    
+    try {
+      // 1. Actualiza el texto en la tabla web
+      await set(ref(db, `docentes/${docente.id}/estado`), nuevoEstado);
+      
+      // 2. Actualiza el acceso real (true/false) para la App y el Laboratorio
+      await set(ref(db, `laboratorio/usuarios/${docente.id}/habilitado`), nuevoEstado === 'Habilitado');
+      
+    } catch (error) {
+      console.error("Error al cambiar estado:", error);
+    }
   };
 
   const eliminarDocente = async () => {
