@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { ref, onValue, set } from 'firebase/database';
+import { ref, onValue, set, get } from 'firebase/database'; // <-- AQUÍ FALTABA IMPORTAR 'get'
 
 export default function Prestamos() {
   const [pendientes, setPendientes] = useState([]);
@@ -189,13 +189,13 @@ export default function Prestamos() {
               {/* ZONA DE RESPUESTA */}
               <div className="mt-6">
                 <label className="text-sm text-white font-bold flex items-center gap-2 mb-2">
-                  💬 Tu respuesta al alumno (Requerido)
+                  💬 Tu respuesta al solicitante
                 </label>
                 <textarea 
                   value={respuestaAdmin}
                   onChange={(e) => setRespuestaAdmin(e.target.value)}
                   className="w-full bg-[#121b2a] border border-slate-700 rounded-xl p-4 text-sm text-white min-h-[100px] outline-none focus:border-[#0BB885] transition-colors"
-                  placeholder="Redacta la respuesta que le llegará a la app del estudiante..."
+                  placeholder="Redacta la respuesta que le llegará a la app"
                 ></textarea>
                 
                 {/* BOTONES DE RESPUESTA RÁPIDA (Opcional, muy útil) */}
