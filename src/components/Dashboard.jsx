@@ -18,30 +18,35 @@ export default function Dashboard() {
 
   useEffect(() => {
     // 1. Escuchar Docentes (para cruzar Nombres)
-    onValue(ref(db, 'docentes'), (snapshot) => {
+      onValue(ref(db, 'docentes'), (snapshot) => {
       const data = snapshot.val();
       setDocentes(data ? Object.values(data) : []);
     });
 
     // 2. Escuchar Telemetría Física (ESP32)
-    onValue(ref(db, 'telemetria'), (snapshot) => {
+      onValue(ref(db, 'configuracion_laboratorios/LAB_ELECTRONICA'), (snapshot) => {
       const val = snapshot.val();
       if (val) {
-        setPestilloAbierto(val.pestilloAbierto || false);
-        // Leemos la cantidad de personas que el ESP32 cuenta
-        setOcupacion(val.ocupacion || 0); 
+        // Mapeamos el string "ABIERTA" o "CERRADA" al booleano visual
+        setPestilloAbierto(val.estado_puerta === 'ABIERTA');
+        setOcupacion(val.ocupacion || 0); // Preparado para futura integración de conteo
       }
     });
 
     // 3. Escuchar Auditoría y Contar Alertas (Accesos Denegados)
-    onValue(ref(db, 'auditoria'), (snapshot) => {
+    onValue(ref(db, 'laboratorio/auditoria'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
         const logs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        logs.sort((a, b) => b.fechaHora.localeCompare(a.fechaHora));
+        
+        // Ordenar por 'hora' (nuestra llave en C++)
+        logs.sort((a, b) => b.hora.localeCompare(a.hora));
         setAuditoria(logs);
         
-        const fallos = logs.filter(log => log.esExito === false).length;
+        // Alertas son tanto los accesos denegados como las puertas abandonadas
+        const fallos = logs.filter(log => 
+          log.evento === 'ACCESO_DENEGADO' || log.evento === 'PUERTA_ABANDONADA'
+        ).length;
         setAlertasSeguridad(fallos);
       } else {
         setAuditoria([]);
@@ -50,15 +55,11 @@ export default function Dashboard() {
     });
 
     // 4. Escuchar Reservas Móviles para contar pendientes
-    onValue(ref(db, 'reservas'), (snapshot) => {
+      onValue(ref(db, 'reservas'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        // Convertimos el objeto en un arreglo
         const list = Object.values(data);
-        
-        // Filtramos las que estén pendientes (ignorando mayúsculas/minúsculas por seguridad)
         const pendientes = list.filter(s => s.estado && s.estado.toLowerCase() === 'pendiente').length;
-        
         setReservasPendientes(pendientes);
       } else {
         setReservasPendientes(0);
@@ -67,10 +68,16 @@ export default function Dashboard() {
   }, []);
 
   const obtenerPropietario = (uidCard) => {
-    if (uidCard === 'SENSOR-MAG') return 'Sistema (Magnético)';
-    if (uidCard === 'BOTON-INT') return 'Pulsador Interno';
-    const encontrado = docentes.find(d => d.uid.replace(/\s+/g, '').toUpperCase() === uidCard.replace(/\s+/g, '').toUpperCase());
-    return encontrado ? encontrado.nombre : '⚠️ Desconocido / Inválido';
+    if (!uidCard) return 'Desconocido';
+    
+    // Identidades de hardware programadas en el ESP32
+    if (uidCard === 'SISTEMA') return 'Monitor de Hardware';
+    if (uidCard === 'BOTON_INTERIOR') return 'Pulsador de Salida (REX)';
+    
+    const encontrado = docentes.find(d => 
+      d.uid && d.uid.replace(/\s+/g, '').toUpperCase() === uidCard.replace(/\s+/g, '').toUpperCase()
+    );
+    return encontrado ? encontrado.nombre : '⚠️ Credencial No Registrada';
   };
 
   return (
@@ -176,26 +183,50 @@ export default function Dashboard() {
             </thead>
             <tbody className="divide-y divide-slate-800/40 text-xs text-slate-300">
               {auditoria.map((log, idx) => {
-                const propietario = obtenerPropietario(log.idCredencial);
+                const propietario = obtenerPropietario(log.uid);
+                
+                // Lógica de clasificación de eventos desde el ESP32
+                const esExito = log.evento === 'ACCESO_CONCEDIDO';
+                const esAlarmaFisica = log.evento === 'PUERTA_ABANDONADA';
+                const esDenegado = log.evento === 'ACCESO_DENEGADO';
+
                 return (
                   <tr key={log.id || idx} className="hover:bg-slate-800/20 transition-colors">
-                    <td className="px-5 py-4 text-slate-400 font-mono text-[11px]">{log.fechaHora}</td>
+                    <td className="px-5 py-4 text-slate-400 font-mono text-[11px]">{log.hora}</td>
+                    
                     <td className="px-5 py-4">
-                      <div className={`font-bold ${propietario.includes('⚠️') ? 'text-red-400' : 'text-slate-200'}`}>{propietario}</div>
-                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">{log.idCredencial}</div>
+                      <div className={`font-bold ${propietario.includes('⚠️') ? 'text-red-400' : 'text-slate-200'}`}>
+                        {propietario}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">{log.uid}</div>
                     </td>
-                    <td className="px-5 py-4">{log.metodo || 'Lector RFID ESP32'}</td>
+                    
                     <td className="px-5 py-4">
-                      <span className={`px-2.5 py-1 rounded text-[10px] font-bold border ${log.esExito ? 'text-[#0BB885] bg-[#0BB885]/10 border-[#0BB885]/20' : 'text-red-400 bg-red-400/10 border-red-500/20'}`}>
-                        {log.esExito ? 'Acceso Permitido' : 'Acceso Denegado'}
+                      <span className="text-slate-300 font-mono text-[10px] bg-slate-800/50 border border-slate-700/50 px-2 py-1 rounded">
+                        {log.modo || 'NO_IDENTIFICADO'}
                       </span>
+                    </td>
+                    
+                    <td className="px-5 py-4">
+                      {esExito && (
+                        <span className="px-2.5 py-1 rounded text-[10px] font-bold border text-[#0BB885] bg-[#0BB885]/10 border-[#0BB885]/20">
+                          Acceso Permitido
+                        </span>
+                      )}
+                      {esDenegado && (
+                        <span className="px-2.5 py-1 rounded text-[10px] font-bold border text-red-400 bg-red-400/10 border-red-500/20">
+                          Acceso Denegado
+                        </span>
+                      )}
+                      {esAlarmaFisica && (
+                        <span className="px-2.5 py-1 rounded text-[10px] font-bold border text-orange-400 bg-orange-400/10 border-orange-500/20 shadow-[0_0_10px_rgba(251,146,60,0.2)]">
+                          Alarma: Puerta Abierta
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
               })}
-              {auditoria.length === 0 && (
-                <tr><td colSpan="4" className="p-8 text-center text-slate-500 italic text-xs">Esperando eventos en vivo desde el microcontrolador...</td></tr>
-              )}
             </tbody>
           </table>
         </div>
