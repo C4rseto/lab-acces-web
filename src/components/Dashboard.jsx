@@ -6,28 +6,24 @@ import { ref, onValue } from 'firebase/database';
 export default function Dashboard() {
   const navigate = useNavigate();
   
-  // 1. ESTADO DEL SELECTOR DE LABORATORIOS
-  const laboratorios = ['Todos', '💻 Lab. Cómputo', '⚡ Lab. Electrónica', '🧪 Lab. Química'];
-  const [labSeleccionado, setLabSeleccionado] = useState('Todos');
+  // 1. SELECTOR SIN LA OPCIÓN "TODOS"
+  const laboratorios = ['💻 Lab. Cómputo', '⚡ Lab. Electrónica', '🧪 Lab. Química'];
+  // Empezamos por defecto en el primer laboratorio
+  const [labSeleccionado, setLabSeleccionado] = useState('💻 Lab. Cómputo');
 
-  // 2. ESTADOS DE DATOS CRUDOS (Todo lo que viene de Firebase)
   const [docentes, setDocentes] = useState([]);
   const [todasAuditorias, setTodasAuditorias] = useState([]);
   const [todasReservas, setTodasReservas] = useState([]);
   
-  // 3. ESTADOS DE TELEMETRÍA FÍSICA (Cambiantes según el lab)
   const [pestilloAbierto, setPestilloAbierto] = useState(false);
   const [ocupacion, setOcupacion] = useState(0);
 
-  // EFECTO 1: Descargar datos generales (Docentes, Auditoría completa y Reservas)
   useEffect(() => {
-    // Escuchar Docentes
     onValue(ref(db, 'docentes'), (snapshot) => {
       const data = snapshot.val();
       setDocentes(data ? Object.values(data) : []);
     });
 
-    // Escuchar Auditoría completa
     onValue(ref(db, 'laboratorio/auditoria'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
@@ -39,22 +35,14 @@ export default function Dashboard() {
       }
     });
 
-    // Escuchar Reservas completas
     onValue(ref(db, 'reservas'), (snapshot) => {
       const data = snapshot.val();
       setTodasReservas(data ? Object.values(data) : []);
     });
   }, []);
 
-  // EFECTO 2: Escuchar la telemetría dinámica de la puerta seleccionada
+  // EFECTO: Escuchar telemetría solo del lab seleccionado
   useEffect(() => {
-    if (labSeleccionado === 'Todos') {
-      setPestilloAbierto(false);
-      setOcupacion(0);
-      return;
-    }
-
-    // Convertimos el nombre visual a la llave de Firebase
     let nodoFirebase = '';
     if (labSeleccionado.includes('Cómputo')) nodoFirebase = 'LAB_COMPUTO';
     if (labSeleccionado.includes('Electrónica')) nodoFirebase = 'LAB_ELECTRONICA';
@@ -74,12 +62,17 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [labSeleccionado]);
 
-  // 4. CÁLCULOS FILTRADOS (Se actualizan solos cuando cambias el select)
-  const auditoriaFiltrada = todasAuditorias.filter(log => {
-    if (labSeleccionado === 'Todos') return true;
-    // IMPORTANTE: Asegúrate de que el ESP32 envíe el campo 'laboratorio' en el log
-    return log.laboratorio === labSeleccionado; 
-  });
+  // FUNCIÓN INTELIGENTE PARA COMPARAR LABS (Ignora los emojis)
+  const coincideLab = (labDB) => {
+    if (!labDB) return false;
+    if (labSeleccionado.includes('Cómputo') && labDB.includes('Cómputo')) return true;
+    if (labSeleccionado.includes('Electrónica') && labDB.includes('Electrónica')) return true;
+    if (labSeleccionado.includes('Química') && labDB.includes('Química')) return true;
+    return false;
+  };
+
+  // 4. CÁLCULOS FILTRADOS
+  const auditoriaFiltrada = todasAuditorias.filter(log => coincideLab(log.laboratorio));
 
   const alertasSeguridad = auditoriaFiltrada.filter(log => 
     log.evento === 'ACCESO_DENEGADO' || log.evento === 'PUERTA_ABANDONADA'
@@ -87,11 +80,9 @@ export default function Dashboard() {
 
   const reservasPendientes = todasReservas.filter(res => {
     const esPendiente = res.estado && res.estado.toLowerCase() === 'pendiente';
-    const esDelLab = labSeleccionado === 'Todos' || res.laboratorio === labSeleccionado;
-    return esPendiente && esDelLab;
+    return esPendiente && coincideLab(res.laboratorio);
   }).length;
 
-  // FUNCIÓN HELPER
   const obtenerPropietario = (uidCard) => {
     if (!uidCard) return 'Desconocido';
     if (uidCard === 'SISTEMA') return 'Monitor de Hardware';
@@ -105,17 +96,15 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* CABECERA Y SELECTOR */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-[22px] font-extrabold text-white flex items-center gap-3">
-            Panel de Control Global 
+            Panel de Control 
             <span className="bg-blue-900/40 text-blue-400 border border-blue-700/50 text-[9px] px-2 py-0.5 rounded uppercase tracking-wider font-bold">Modo Administrador</span>
           </h1>
           <p className="text-slate-400 mt-1 text-xs">Monitoreo de accesos, ocupación y alertas en tiempo real.</p>
         </div>
 
-        {/* SELECTOR DE LABORATORIO */}
         <div className="flex items-center gap-3 bg-[#0B1320] px-4 py-2 rounded-xl border border-slate-700/80 shadow-lg">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Supervisar:</label>
           <select 
@@ -133,30 +122,21 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 4 TARJETAS DE MÉTRICAS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* TARJETA 1: PESTILLO */}
         <div className="bg-[#0B1320] p-5 rounded-2xl border border-slate-800/80 shadow-lg flex flex-col justify-between min-h-[120px]">
           <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1">Estado del Pestillo</h3>
-          
-          {labSeleccionado === 'Todos' ? (
-            <p className="text-xl font-bold text-slate-500 mt-2">SELECCIONE LAB</p>
-          ) : (
-            <p className={`text-3xl font-black ${pestilloAbierto ? 'text-[#0BB885]' : 'text-red-500'}`}>
-              {pestilloAbierto ? 'ABIERTO' : 'CERRADO'}
-            </p>
-          )}
-
+          <p className={`text-3xl font-black ${pestilloAbierto ? 'text-[#0BB885]' : 'text-red-500'}`}>
+            {pestilloAbierto ? 'ABIERTO' : 'CERRADO'}
+          </p>
           <div className="flex items-center gap-1.5 mt-2">
-            <span className={`w-1.5 h-1.5 rounded-full ${labSeleccionado === 'Todos' ? 'bg-slate-600' : (pestilloAbierto ? 'bg-[#0BB885]' : 'bg-red-500')}`}></span>
+            <span className={`w-1.5 h-1.5 rounded-full ${pestilloAbierto ? 'bg-[#0BB885]' : 'bg-red-500'}`}></span>
             <span className="text-[10px] text-slate-400">
-              {labSeleccionado === 'Todos' ? 'Vista global' : (pestilloAbierto ? 'Paso liberado' : 'Bloqueo Activo')}
+              {pestilloAbierto ? 'Paso liberado' : 'Bloqueo Activo'}
             </span>
           </div>
         </div>
 
-        {/* TARJETA 2: OCUPACIÓN ACTUAL */}
         <div className="bg-[#0B1320] p-5 rounded-2xl border border-slate-800/80 shadow-lg flex flex-col justify-between min-h-[120px] relative">
           <div className="flex justify-between items-start">
             <h3 className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-1">Ocupación Actual</h3>
@@ -166,18 +146,16 @@ export default function Dashboard() {
               </svg>
             </div>
           </div>
-          
           <p className="text-4xl font-black text-white flex items-baseline gap-1 mt-1">
-            {labSeleccionado === 'Todos' ? '--' : ocupacion} <span className="text-sm font-normal text-slate-400 mb-1">personas</span>
+            {ocupacion} <span className="text-sm font-normal text-slate-400 mb-1">personas</span>
           </p>
           <div className="flex items-center gap-1.5 mt-1">
             <span className={`text-[11px] font-semibold ${ocupacion === 0 ? 'text-[#0BB885]' : 'text-blue-400'}`}>
-              {labSeleccionado === 'Todos' ? 'Seleccione un laboratorio' : (ocupacion === 0 ? 'Nadie en el laboratorio' : 'Personas en el interior')}
+              {ocupacion === 0 ? 'Nadie en el laboratorio' : 'Personas en el interior'}
             </span>
           </div>
         </div>
 
-        {/* TARJETA 3: ALERTAS */}
         <div className="bg-[#0B1320] p-5 rounded-2xl border border-slate-800/80 shadow-lg flex flex-col justify-between min-h-[120px]">
           <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1">Alertas de Seguridad</h3>
           <p className="text-3xl font-black text-white flex items-baseline gap-1">
@@ -185,13 +163,10 @@ export default function Dashboard() {
           </p>
           <div className="flex items-center gap-1.5 mt-2">
             <span className={`w-1.5 h-1.5 rounded-full ${alertasSeguridad > 0 ? 'bg-orange-400' : 'bg-slate-600'}`}></span>
-            <span className="text-[10px] text-slate-400">
-              {labSeleccionado === 'Todos' ? 'De todos los laboratorios' : 'Intentos en este laboratorio'}
-            </span>
+            <span className="text-[10px] text-slate-400">Intentos en este laboratorio</span>
           </div>
         </div>
 
-        {/* TARJETA 4: APP MÓVIL */}
         <div className="bg-[#0B1320] p-5 rounded-2xl border border-slate-800/80 shadow-lg flex flex-col justify-between min-h-[120px]">
           <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1">App Móvil: Reservas</h3>
           <p className="text-3xl font-black text-white flex items-baseline gap-1">
@@ -209,7 +184,6 @@ export default function Dashboard() {
 
       </div>
 
-      {/* TABLA DE AUDITORÍA */}
       <div className="bg-[#0B1320] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl">
         <div className="px-5 py-4 border-b border-slate-800/80 flex justify-between items-center">
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -227,7 +201,6 @@ export default function Dashboard() {
             <thead>
               <tr className="bg-[#0B1320] text-[9px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-800/80">
                 <th className="px-5 py-3">Fecha y Hora</th>
-                {labSeleccionado === 'Todos' && <th className="px-5 py-3">Laboratorio</th>}
                 <th className="px-5 py-3">Docente / Credencial</th>
                 <th className="px-5 py-3">Método de Entrada</th>
                 <th className="px-5 py-3">Resultado</th>
@@ -236,7 +209,7 @@ export default function Dashboard() {
             <tbody className="divide-y divide-slate-800/40 text-xs text-slate-300">
               {auditoriaFiltrada.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-5 py-8 text-center text-slate-500 italic">
+                  <td colSpan="4" className="px-5 py-8 text-center text-slate-500 italic">
                     No hay registros de auditoría para mostrar.
                   </td>
                 </tr>
@@ -250,42 +223,21 @@ export default function Dashboard() {
                   return (
                     <tr key={log.id || idx} className="hover:bg-slate-800/20 transition-colors">
                       <td className="px-5 py-4 text-slate-400 font-mono text-[11px]">{log.hora}</td>
-                      
-                      {labSeleccionado === 'Todos' && (
-                        <td className="px-5 py-4 font-semibold text-blue-400 text-[11px]">
-                          {log.laboratorio || 'No especificado'}
-                        </td>
-                      )}
-                      
                       <td className="px-5 py-4">
                         <div className={`font-bold ${propietario.includes('⚠️') ? 'text-red-400' : 'text-slate-200'}`}>
                           {propietario}
                         </div>
                         <div className="text-[10px] text-slate-500 font-mono mt-0.5">{log.uid}</div>
                       </td>
-                      
                       <td className="px-5 py-4">
                         <span className="text-slate-300 font-mono text-[10px] bg-slate-800/50 border border-slate-700/50 px-2 py-1 rounded">
                           {log.modo || 'NO_IDENTIFICADO'}
                         </span>
                       </td>
-                      
                       <td className="px-5 py-4">
-                        {esExito && (
-                          <span className="px-2.5 py-1 rounded text-[10px] font-bold border text-[#0BB885] bg-[#0BB885]/10 border-[#0BB885]/20">
-                            Acceso Permitido
-                          </span>
-                        )}
-                        {esDenegado && (
-                          <span className="px-2.5 py-1 rounded text-[10px] font-bold border text-red-400 bg-red-400/10 border-red-500/20">
-                            Acceso Denegado
-                          </span>
-                        )}
-                        {esAlarmaFisica && (
-                          <span className="px-2.5 py-1 rounded text-[10px] font-bold border text-orange-400 bg-orange-400/10 border-orange-500/20 shadow-[0_0_10px_rgba(251,146,60,0.2)]">
-                            Alarma: Puerta Abierta
-                          </span>
-                        )}
+                        {esExito && <span className="px-2.5 py-1 rounded text-[10px] font-bold border text-[#0BB885] bg-[#0BB885]/10 border-[#0BB885]/20">Acceso Permitido</span>}
+                        {esDenegado && <span className="px-2.5 py-1 rounded text-[10px] font-bold border text-red-400 bg-red-400/10 border-red-500/20">Acceso Denegado</span>}
+                        {esAlarmaFisica && <span className="px-2.5 py-1 rounded text-[10px] font-bold border text-orange-400 bg-orange-400/10 border-orange-500/20 shadow-[0_0_10px_rgba(251,146,60,0.2)]">Alarma: Puerta Abierta</span>}
                       </td>
                     </tr>
                   );
