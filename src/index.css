@@ -1,1 +1,19 @@
 @import "tailwindcss";
+/* --- TEMA OSCURO (Por defecto) --- */
+body.modo-oscuro {
+  background-color: #090d16; /* El fondo oscuro que ya tienes */
+  color: #ffffff; 
+}
+
+/* --- TEMA CLARO --- */
+body.modo-claro {
+  background-color: #f8fafc; /* Fondo blanco/gris claro */
+  color: #1e293b; /* Texto oscuro */
+}
+
+/* Opcional: Si tus tarjetas/contenedores tienen un color fijo, 
+   puedes cambiarlo aquí también */
+body.modo-claro .tarjeta {
+  background-color: #ffffff;
+  color: #000000;
+}
