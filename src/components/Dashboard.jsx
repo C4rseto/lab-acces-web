@@ -64,14 +64,15 @@ export default function Dashboard() {
   }, [labSeleccionado]);
 
   const coincideLab = (labDB) => {
-    if (!labDB) return false;
-    if (labSeleccionado.includes('Cómputo') && labDB.includes('Cómputo')) return true;
-    if (labSeleccionado.includes('Electrónica') && labDB.includes('Electrónica')) return true;
-    if (labSeleccionado.includes('Química') && labDB.includes('Química')) return true;
+    const dbString = labDB.toUpperCase();
+    
+    if (labSeleccionado.includes('Cómputo') && (dbString.includes('CÓMPUTO') || dbString.includes('COMPUTO'))) return true;
+    if (labSeleccionado.includes('Electrónica') && (dbString.includes('ELECTRÓNICA') || dbString.includes('ELECTRONICA'))) return true;
+    if (labSeleccionado.includes('Química') && (dbString.includes('QUÍMICA') || dbString.includes('QUIMICA'))) return true;
     return false;
   };
 
-  const auditoriaFiltrada = todasAuditorias.filter(log => coincideLab(log.laboratorio));
+  const auditoriaFiltrada = todasAuditorias.filter(log => coincideLab(log.id_terminal));
 
   const alertasSeguridad = auditoriaFiltrada.filter(log => 
     log.evento === 'ACCESO_DENEGADO' || log.evento === 'PUERTA_ABANDONADA'
@@ -161,7 +162,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tarjeta 2: Ocupación */}
+        {/* Tarjeta 2: Ocupación 
         <div className="relative bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 overflow-hidden flex flex-col justify-between shadow-sm">
           <div className="absolute -top-6 -right-6 w-32 h-32 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-2xl pointer-events-none"></div>
           <div className="flex justify-between items-start z-10">
@@ -180,7 +181,7 @@ export default function Dashboard() {
               {ocupacion === 0 ? 'Instalación vacía' : 'Aforo en uso'}
             </span>
           </div>
-        </div>
+        </div>*/}
 
         {/* Tarjeta 3: Alertas */}
         <div className="relative bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 overflow-hidden flex flex-col justify-between shadow-sm">
