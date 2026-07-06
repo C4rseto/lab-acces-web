@@ -92,11 +92,11 @@ function AdminLayout({ children, esOscuro, setEsOscuro }) {
         {/* Barra Superior */}
         <header className="flex items-center justify-end px-10 py-4 bg-white dark:bg-[#111827] border-b border-slate-200 dark:border-slate-800 gap-5 shrink-0 transition-colors duration-300 shadow-sm z-0">
           
-          {/* Indicador de conexión sutil 
+          {/* Indicador de conexión sutil */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-400">
             <span className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-500"></span>
             SISTEMA EN LÍNEA
-          </div>*/}
+          </div>
 
           {/* Botón Claro / Oscuro */}
           <button 
