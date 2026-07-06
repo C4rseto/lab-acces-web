@@ -2,6 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { ref, onValue } from 'firebase/database';
 
+// Conversor inteligente de tiempo (Mantiene el parche para detectar PM automáticamente)
+const convertirAMinutos = (horaStr) => {
+  if (!horaStr) return 0;
+  const trimmed = horaStr.trim().toUpperCase();
+  const partesEspacio = trimmed.split(/\s+/);
+  const horaParte = partesEspacio[0];
+  const ampm = partesEspacio[1] || null;
+  
+  let [h, m] = horaParte.split(':').map(Number);
+  if (isNaN(h)) h = 0;
+  if (isNaN(m)) m = 0;
+  
+  if (ampm === 'PM' && h !== 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  if (!ampm && h < 7) h += 12;
+  
+  return h * 60 + m;
+};
+
 export default function Cronograma() {
   const [docentes, setDocentes] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
@@ -12,30 +31,23 @@ export default function Cronograma() {
   const laboratoriosDisponibles = ['Todos', 'Lab. Cómputo', 'Lab. Electrónica', 'Lab. Química'];
   const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-  // 🎨 PALETA GOOGLE CALENDAR / TIME BLOCKING (Colores Sólidos Mates, Cero Neón)
+  // 🎨 PALETA COMERCIAL PARA TARJETAS EN MATRIZ
   const paletaCorporativa = [
-    { bg: 'bg-[#2A4365] hover:bg-[#314E75]', border: 'border-l-[4px] border-l-[#63B3ED]', text: 'text-white', subtext: 'text-blue-100' }, // Azul Mate
-    { bg: 'bg-[#22543D] hover:bg-[#276749]', border: 'border-l-[4px] border-l-[#68D391]', text: 'text-white', subtext: 'text-emerald-100' }, // Verde Mate
-    { bg: 'bg-[#44337A] hover:bg-[#553C9A]', border: 'border-l-[4px] border-l-[#B794F4]', text: 'text-white', subtext: 'text-purple-100' }, // Púrpura Mate
-    { bg: 'bg-[#742A2A] hover:bg-[#823030]', border: 'border-l-[4px] border-l-[#FC8181]', text: 'text-white', subtext: 'text-red-100' },   // Rojo/Granate Mate
-    { bg: 'bg-[#234E52] hover:bg-[#2C6266]', border: 'border-l-[4px] border-l-[#4FD1C5]', text: 'text-white', subtext: 'text-teal-100' }, // Verde Azulado
-    { bg: 'bg-[#5F370E] hover:bg-[#704212]', border: 'border-l-[4px] border-l-[#F6AD55]', text: 'text-white', subtext: 'text-orange-100' }, // Naranja Mate
+    { bg: 'bg-blue-50/80 dark:bg-blue-900/20 hover:bg-blue-100', border: 'border-l-[3px] border-l-blue-500 border border-slate-200 dark:border-slate-700', text: 'text-slate-800 dark:text-slate-100', tag: 'bg-blue-200/50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300' },
+    { bg: 'bg-emerald-50/80 dark:bg-emerald-900/20 hover:bg-emerald-100', border: 'border-l-[3px] border-l-emerald-500 border border-slate-200 dark:border-slate-700', text: 'text-slate-800 dark:text-slate-100', tag: 'bg-emerald-200/50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300' },
+    { bg: 'bg-purple-50/80 dark:bg-purple-900/20 hover:bg-purple-100', border: 'border-l-[3px] border-l-purple-500 border border-slate-200 dark:border-slate-700', text: 'text-slate-800 dark:text-slate-100', tag: 'bg-purple-200/50 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300' },
+    { bg: 'bg-cyan-50/80 dark:bg-cyan-900/20 hover:bg-cyan-100', border: 'border-l-[3px] border-l-cyan-500 border border-slate-200 dark:border-slate-700', text: 'text-slate-800 dark:text-slate-100', tag: 'bg-cyan-200/50 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300' },
   ];
   
-  // Acento exclusivo para Reservas Extraordinarias (Ámbar Mate)
   const estiloPrestamo = { 
-    bg: 'bg-[#744210] hover:bg-[#8A4F13]', border: 'border-l-[4px] border-l-[#FBD38D]', text: 'text-white', subtext: 'text-yellow-100' 
+    bg: 'bg-amber-50 dark:bg-amber-500/5 hover:bg-amber-100', border: 'border-l-[3px] border-l-amber-500 border border-amber-200 dark:border-amber-500/30', text: 'text-slate-900 dark:text-white', tag: 'bg-amber-500 text-slate-900 font-black border-none' 
   };
 
-  // =========================================================
-  // TU LÓGICA DE FIREBASE Y ALGORITMOS 100% INTACTOS
-  // =========================================================
   useEffect(() => {
     onValue(ref(db, 'docentes'), snapshot => {
       const data = snapshot.val();
       setDocentes(data ? Object.values(data) : []);
     });
-    
     onValue(ref(db, 'reservas'), snapshot => {
       const data = snapshot.val();
       setSolicitudes(data ? Object.values(data) : []);
@@ -54,14 +66,9 @@ export default function Cronograma() {
         doc.horarios?.forEach(h => {
           if (mapa[h.dia] && (filtroLab === 'Todos' || doc.laboratorio?.includes(filtroLab))) {
             mapa[h.dia].push({ 
-              tipo: 'Clase Regular', 
-              titulo: doc.nombre, 
-              lab: doc.laboratorio, 
-              inicio: h.inicio, 
-              fin: h.fin,
-              correo: doc.correo || 'No especificado',
-              uid: doc.uid || 'RFID Activo',
-              estilo: estiloAsignado 
+              tipo: 'Clase Regular', titulo: doc.nombre, lab: doc.laboratorio, 
+              inicio: h.inicio, fin: h.fin, correo: doc.correo || 'No especificado',
+              uid: doc.uid || 'RFID Activo', estilo: estiloAsignado 
             });
           }
         });
@@ -82,225 +89,246 @@ export default function Cronograma() {
 
     solicitudes.forEach(sol => {
       const diaConvertido = obtenerDiaSemana(sol.fecha);
-
       if (sol.estado === 'aprobado' && diaConvertido && mapa[diaConvertido] && (filtroLab === 'Todos' || sol.laboratorio?.includes(filtroLab))) {
         mapa[diaConvertido].push({ 
-          tipo: 'Reserva Especial', 
-          titulo: sol.estudiante, 
-          lab: sol.laboratorio, 
-          inicio: sol.horaInicio, 
-          fin: sol.horaFin,
-          fechaExacta: sol.fecha,
-          motivo: sol.motivo || 'Práctica libre / Proyecto',
-          equipos: sol.equipos || 'Ninguno',
+          tipo: 'Reserva Especial', titulo: sol.estudiante, lab: sol.laboratorio, 
+          inicio: sol.horaInicio, fin: sol.horaFin, fechaExacta: sol.fecha,
+          motivo: sol.motivo || 'Práctica libre / Proyecto', equipos: sol.equipos || 'Ninguno',
           estilo: estiloPrestamo 
         });
       }
     });
 
-    const convertirAMinutos = (horaStr) => {
-      if (!horaStr) return 0;
-      const [hora, ampm] = horaStr.split(' ');
-      let [h, m] = hora.split(':').map(Number);
-      if (ampm === 'PM' && h !== 12) h += 12;
-      if (ampm === 'AM' && h === 12) h = 0;
-      return h * 60 + m;
-    };
-
-    Object.keys(mapa).forEach(dia => {
-      mapa[dia].sort((a, b) => convertirAMinutos(a.inicio) - convertirAMinutos(b.inicio));
-    });
-
     return mapa;
   };
 
-  const limpiarTextoLab = (lab) => {
-    if (!lab) return '';
-    return lab.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim();
-  };
+  const limpiarTextoLab = (lab) => lab ? lab.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim() : '';
 
   const datosDia = cronogramaPorDia();
+  const totalClases = Object.values(datosDia).flat().filter(e => e.tipo === 'Clase Regular').length;
+  const totalExtras = Object.values(datosDia).flat().filter(e => e.tipo === 'Reserva Especial').length;
+
   // =========================================================
+  // 🧠 GENERADOR DE BLOQUES HORARIOS ÚNICOS (MATRIZ)
+  // Extrae todos los rangos de horas y los ordena de arriba hacia abajo
+  // =========================================================
+  const obtenerBloquesDeTiempo = () => {
+    const bloquesSet = new Set();
+    Object.values(datosDia).flat().forEach(ev => {
+      bloquesSet.add(`${ev.inicio} - ${ev.fin}`);
+    });
+    
+    return Array.from(bloquesSet).sort((a, b) => {
+      const inicioA = convertirAMinutos(a.split(' - ')[0]);
+      const inicioB = convertirAMinutos(b.split(' - ')[0]);
+      return inicioA - inicioB;
+    });
+  };
+
+  const bloquesHorarios = obtenerBloquesDeTiempo();
 
   return (
-    <div className="space-y-6 animate-fade-in-up">
+    <div className="space-y-6 animate-fade-in-up pb-10">
       
-      {/* HEADER DE CONTROL */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 border-b border-slate-200/50 dark:border-slate-800/80 pb-5">
+      {/* HEADER CORPORATIVO */}
+      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 border-b border-slate-200/50 dark:border-slate-800/80 pb-5">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3 tracking-tight">
-            <svg className="w-6 h-6 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-            Cronograma de Ocupación
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-[#1E293B] flex items-center justify-center border border-indigo-100 dark:border-slate-700 shadow-sm">
+              <svg className="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            </div>
+            Matriz de Ocupación
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1.5 text-sm font-medium">Planificación semanal de clases y reservas de infraestructura.</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm font-medium">Vista de tabla clásica alineada por franjas horarias.</p>
         </div>
 
-        <div className="flex bg-slate-100 dark:bg-[#0F172A] p-1 rounded-xl border border-slate-200 dark:border-slate-800 w-full lg:w-auto shrink-0">
+        {/* SELECTOR DE PESTAÑAS (LABORATORIOS) */}
+        <div className="flex bg-slate-100 dark:bg-[#0F172A] p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 w-full lg:w-auto overflow-x-auto shadow-inner">
           {laboratoriosDisponibles.map(lab => (
             <button
               key={lab}
               onClick={() => setFiltroLab(lab)}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap border-0 cursor-pointer ${
+              className={`px-5 py-2.5 text-xs font-bold rounded-lg transition-all border-0 cursor-pointer whitespace-nowrap ${
                 filtroLab === lab 
-                ? 'bg-white dark:bg-[#1E293B] text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' 
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-transparent'
+                  ? 'bg-white dark:bg-[#1E293B] text-slate-800 dark:text-white shadow-sm border border-slate-200 dark:border-slate-700' 
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-transparent'
               }`}
             >
-              {lab}
+              {lab.replace(/^.\s+/, '')}
             </button>
           ))}
         </div>
       </div>
-      
-      {/* REJILLA DE COLUMNAS ESTILO TIME-BLOCKING (Sólido y Claro) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {diasSemana.map(dia => (
-          <div key={dia} className="bg-slate-50 dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800/80 p-2.5 rounded-2xl flex flex-col gap-3 min-h-[600px] shadow-inner">
-            
-            {/* CABECERA DEL DÍA */}
-            <h3 className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase text-center pb-2.5 pt-1.5 tracking-widest border-b border-slate-200 dark:border-slate-800/80">
-              {dia}
-            </h3>
-            
-            {/* Contenedor de Bloques Horarios */}
-            <div className="flex flex-col gap-2 overflow-y-auto pr-0.5 pb-2 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-slate-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-track]:bg-transparent">
-              
-              {datosDia[dia]?.map((ev, i) => (
-                <div 
-                  key={i} 
-                  onClick={() => setEventoSeleccionado({ ...ev, diaSemana: dia })}
-                  // Aquí aplicamos el color sólido y el borde grueso tipo Google Calendar
-                  className={`p-3 rounded-lg cursor-pointer transition-all shadow-sm flex flex-col gap-1 ${ev.estilo.bg} ${ev.estilo.border}`}
-                >
-                  <div className="flex justify-between items-start mb-0.5">
-                    {/* HORA */}
-                    <div className={`font-mono text-[10px] font-bold tracking-wide ${ev.estilo.subtext}`}>
-                      {ev.inicio} - {ev.fin}
-                    </div>
-                    {/* ETIQUETA CLARA INTEGRADA */}
-                    <div className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-black/20 text-white/90 tracking-wider">
-                      {ev.tipo === 'Clase Regular' ? 'CLASE' : 'RESERVA'}
-                    </div>
-                  </div>
-                  
-                  {/* TÍTULO BLANCO PURO */}
-                  <div className={`text-sm font-bold leading-tight ${ev.estilo.text}`}>
-                    {ev.titulo}
-                  </div>
-                  
-                  {/* LABORATORIO */}
-                  <div className={`text-[10px] font-semibold mt-1 flex items-center gap-1 uppercase tracking-wider ${ev.estilo.subtext}`}>
-                    <svg className="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    {limpiarTextoLab(ev.lab)}
-                  </div>
-                </div>
-              ))}
-              
-              {/* Bloque de Día Libre */}
-              {datosDia[dia]?.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-28 opacity-50 mt-2 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg">
-                  <span className="text-center text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-widest">Sin Actividad</span>
-                </div>
-              )}
 
-            </div>
+      {/* DASHBOARD RESUMEN */}
+      <div className="flex flex-wrap gap-4 items-center bg-white dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-bold text-slate-600 dark:text-slate-300">
+        <div className="flex items-center gap-2.5">
+          <div className="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-md border border-slate-200 dark:border-slate-700">
+            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           </div>
-        ))}
+          <span>{totalClases} CLASES REGULARES</span>
+        </div>
+        <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
+        <div className="flex items-center gap-2.5">
+          <div className="bg-amber-50 dark:bg-amber-500/10 p-1.5 rounded-md border border-amber-200 dark:border-amber-500/20">
+            <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          </div>
+          <span>{totalExtras} RESERVAS EXTRAORDINARIAS</span>
+        </div>
+      </div>
+
+      {/* 🚀 TABLA DE MATRIZ DE HORARIOS (DISEÑO UNIVERSITARIO CLÁSICO) 🚀 */}
+      <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto [&::-webkit-scrollbar]:h-[6px] [&::-webkit-scrollbar-thumb]:bg-slate-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-track]:bg-transparent">
+          
+          <table className="w-full text-left border-collapse min-w-[1000px]">
+            {/* CABECERA (DÍAS DE LA SEMANA) */}
+            <thead className="bg-slate-50 dark:bg-[#1E293B]">
+              <tr>
+                <th className="p-4 border-b border-r border-slate-200 dark:border-slate-700 w-[140px] sticky left-0 bg-slate-50 dark:bg-[#1E293B] z-20 shadow-[1px_0_0_0_rgba(226,232,240,1)] dark:shadow-[1px_0_0_0_rgba(51,65,85,1)]">
+                  <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    HORARIO
+                  </span>
+                </th>
+                {diasSemana.map(dia => (
+                  <th key={dia} className="p-4 border-b border-slate-200 dark:border-slate-700 text-center w-[14%]">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{dia}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            
+            {/* CUERPO DE LA TABLA (FILAS POR RANGO DE HORA) */}
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+              
+              {bloquesHorarios.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="p-16 text-center">
+                    <div className="flex flex-col items-center justify-center opacity-60">
+                      <svg className="w-10 h-10 text-slate-400 mb-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
+                      <span className="text-sm text-slate-500 font-bold uppercase tracking-widest">Sin horarios programados</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                bloquesHorarios.map((bloque, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
+                    
+                    {/* COLUMNA FIJA: HORA */}
+                    <td className="p-3 border-r border-slate-200 dark:border-slate-700/60 align-top sticky left-0 bg-white dark:bg-[#111827] group-hover:bg-slate-50/50 dark:group-hover:bg-slate-800/30 shadow-[1px_0_0_0_rgba(226,232,240,1)] dark:shadow-[1px_0_0_0_rgba(51,65,85,0.6)] z-10 transition-colors">
+                      <div className="flex flex-col gap-0.5 mt-1">
+                        <span className="text-xs font-black text-slate-800 dark:text-slate-200 font-mono tracking-tight">{bloque.split(' - ')[0]}</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono tracking-tight">{bloque.split(' - ')[1]}</span>
+                      </div>
+                    </td>
+
+                    {/* COLUMNAS DE DÍAS */}
+                    {diasSemana.map(dia => {
+                      // Filtramos los eventos que caen EXACTAMENTE en este bloque de horario y en este día
+                      const eventosEnCelda = datosDia[dia]?.filter(e => `${e.inicio} - ${e.fin}` === bloque) || [];
+
+                      return (
+                        <td key={dia} className="p-2.5 border-r border-slate-100 dark:border-slate-800/40 align-top last:border-r-0">
+                          {eventosEnCelda.length > 0 ? (
+                            <div className="flex flex-col gap-2.5">
+                              {eventosEnCelda.map((ev, i) => (
+                                <div 
+                                  key={i} 
+                                  onClick={() => setEventoSeleccionado({ ...ev, diaSemana: dia })}
+                                  className={`cursor-pointer rounded-lg p-3 transition-transform hover:-translate-y-0.5 shadow-sm border ${ev.estilo.bg} ${ev.estilo.border}`}
+                                >
+                                  <div className="flex justify-between items-start mb-1.5">
+                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-widest ${ev.estilo.tag}`}>
+                                      {ev.tipo === 'Clase Regular' ? 'CLASE' : 'EXTRA'}
+                                    </span>
+                                  </div>
+                                  <h4 className={`text-xs font-bold leading-snug break-words mb-2 ${ev.estilo.text}`}>
+                                    {ev.titulo}
+                                  </h4>
+                                  <div className="flex items-center gap-1 mt-auto pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+                                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+                                      {limpiarTextoLab(ev.lab)}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            // CELDA VACÍA SUTIL
+                            <div className="w-full h-full min-h-[60px] flex items-center justify-center">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800"></span>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* =========================================================
-          POPOVER DE DETALLES 
+          MODAL DE CONTROL DE PERMISOS DETALLADOS (INTACTO)
          ========================================================= */}
       {eventoSeleccionado && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-slate-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-fade-in-up flex flex-col relative overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl max-w-sm w-full shadow-2xl overflow-hidden flex flex-col">
             
-            {/* Cinta superior del color del bloque para mantener contexto */}
-            <div className={`absolute top-0 left-0 w-full h-2 ${eventoSeleccionado.estilo.bg} border-t-0 border-r-0 border-b-0 ${eventoSeleccionado.estilo.border}`}></div>
-
-            <div className="flex justify-between items-start mb-4 mt-2">
-              <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-md tracking-widest bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                {eventoSeleccionado.tipo}
-              </span>
-              <button 
-                onClick={() => setEventoSeleccionado(null)} 
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 bg-transparent border-0 cursor-pointer p-1 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+            <div className={`p-5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50 dark:bg-[#1E293B] border-l-4 ${eventoSeleccionado.estilo.border}`}>
+              <div className="flex justify-between items-start mb-3">
+                <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded tracking-widest ${eventoSeleccionado.tipo === 'Clase Regular' ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200' : 'bg-amber-500 text-white'}`}>
+                  {eventoSeleccionado.tipo}
+                </span>
+                <button onClick={() => setEventoSeleccionado(null)} className="p-1 rounded-full bg-slate-200 dark:bg-slate-800 hover:bg-rose-100 hover:text-rose-500 dark:hover:bg-rose-500/20 transition-colors border-0 cursor-pointer text-slate-500 dark:text-slate-400">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">{eventoSeleccionado.titulo}</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">{eventoSeleccionado.diaSemana} • {eventoSeleccionado.inicio} - {eventoSeleccionado.fin}</p>
             </div>
 
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-snug mb-1">{eventoSeleccionado.titulo}</h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-5 flex items-center gap-1.5">
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              {eventoSeleccionado.diaSemana}, {eventoSeleccionado.inicio} - {eventoSeleccionado.fin}
-            </p>
-
-            <div className="space-y-5 text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-[#0F172A] p-5 rounded-xl border border-slate-100 dark:border-slate-800">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-slate-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
-                <div>
-                  <div className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Laboratorio Asignado</div>
-                  <div className="font-bold text-slate-900 dark:text-white text-base mt-0.5">{limpiarTextoLab(eventoSeleccionado.lab)}</div>
+            <div className="p-5 space-y-4 text-xs">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Zona Autorizada</span>
+                <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                  {limpiarTextoLab(eventoSeleccionado.lab)}
                 </div>
               </div>
 
-              {eventoSeleccionado.tipo === 'Clase Regular' && (
+              {eventoSeleccionado.tipo === 'Clase Regular' ? (
                 <>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-slate-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                    <div>
-                      <div className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Contacto Institucional</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{eventoSeleccionado.correo}</div>
-                    </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Contacto</span>
+                    <div className="font-medium text-slate-700 dark:text-slate-300 font-mono break-all">{eventoSeleccionado.correo}</div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-slate-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 11-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-                    <div>
-                      <div className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Acceso Físico (Hardware)</div>
-                      <div className="font-mono text-xs font-bold mt-1 text-slate-800 dark:text-slate-200 bg-white dark:bg-[#1E293B] px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 w-max shadow-sm">
-                        UID: {eventoSeleccionado.uid}
-                      </div>
-                    </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Token RFID</span>
+                    <div className="mt-1 bg-slate-50 dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 rounded text-slate-600 dark:text-slate-400 font-mono font-bold tracking-wider inline-block">UID: {eventoSeleccionado.uid}</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Justificación</span>
+                    <div className="bg-amber-50 dark:bg-amber-500/10 p-3 rounded border border-amber-200 dark:border-amber-500/20 italic text-amber-800 dark:text-amber-400 font-medium">"{eventoSeleccionado.motivo}"</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Equipamiento</span>
+                    <div className="font-semibold text-slate-700 dark:text-slate-300">{eventoSeleccionado.equipos}</div>
                   </div>
                 </>
               )}
-
-              {eventoSeleccionado.tipo === 'Reserva Especial' && (
-                <>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-slate-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                    <div>
-                      <div className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Fecha de Firebase</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{eventoSeleccionado.fechaExacta}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-slate-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    <div>
-                      <div className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Motivo / Equipos</div>
-                      <div className="italic text-slate-700 dark:text-slate-300 font-medium mt-0.5">"{eventoSeleccionado.motivo}"</div>
-                      {eventoSeleccionado.equipos !== 'Ninguno' && (
-                        <div className="mt-2 font-bold text-xs bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-md w-max">
-                          Eq: {eventoSeleccionado.equipos}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
+              <button onClick={() => setEventoSeleccionado(null)} className="w-full mt-4 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white py-2.5 rounded font-bold text-xs transition-colors cursor-pointer border-0 shadow-sm">Entendido</button>
             </div>
-
-            <button 
-              onClick={() => setEventoSeleccionado(null)} 
-              className="w-full mt-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 py-3 rounded-xl border-0 cursor-pointer font-bold text-sm shadow-sm transition-colors tracking-wide"
-            >
-              Cerrar Detalle
-            </button>
           </div>
         </div>
       )}
-
     </div>
   );
 }
