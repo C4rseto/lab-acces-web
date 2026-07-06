@@ -37,9 +37,6 @@ export default function GestionUsuarios() {
   const listaHoras = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const listaMinutos = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 
-  // =========================================================
-  // TU LÓGICA DE CONEXIÓN CON FIREBASE INTACTA
-  // =========================================================
   useEffect(() => {
     const docentesRef = ref(db, 'docentes'); 
     const unsub = onValue(docentesRef, (snapshot) => {
@@ -58,9 +55,71 @@ export default function GestionUsuarios() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  // --- LÓGICA DE VALIDACIÓN DE CHOQUE DE HORARIOS CORREGIDA ---
   const agregarHorario = () => {
     const inicioStr = `${inicioHora}:${inicioMin} ${inicioAmPm}`;
     const finStr = `${finHora}:${finMin} ${finAmPm}`;
+
+    const convertirAMinutos = (horaStr) => {
+      if (!horaStr) return 0;
+      const [hora, ampm] = horaStr.split(' ');
+      let [h, m] = hora.split(':').map(Number);
+      if (ampm === 'PM' && h !== 12) h += 12;
+      if (ampm === 'AM' && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    const nuevoInicioMin = convertirAMinutos(inicioStr);
+    const nuevoFinMin = convertirAMinutos(finStr);
+
+    if (nuevoInicioMin >= nuevoFinMin) {
+        return lanzarToast('⚠️ La hora de inicio debe ser antes que la de cierre');
+    }
+
+    let choqueDetectado = false;
+    let mensajeChoque = '';
+
+    // Revisión contra las horas que ya metiste en el formulario actual
+    for (let horario of horariosEdicion) {
+      if (horario.dia === dia) {
+        const inicioExistente = convertirAMinutos(horario.inicio);
+        const finExistente = convertirAMinutos(horario.fin);
+        if (nuevoInicioMin < finExistente && nuevoFinMin > inicioExistente) {
+           choqueDetectado = true;
+           mensajeChoque = `🛑 Choque con un horario ya agregado en el formulario para el ${dia}`;
+           break;
+        }
+      }
+    }
+
+    // Revisión contra los otros docentes en la base de datos (Si no hay choques internos previos)
+    if (!choqueDetectado) {
+        for (let doc of docentes) {
+            if (doc.id === docenteEnEdicion) continue; 
+            
+            if (doc.laboratorio === laboratorio && doc.horarios) {
+                for (let horario of doc.horarios) {
+                    if (horario.dia === dia) {
+                        const inicioExistente = convertirAMinutos(horario.inicio);
+                        const finExistente = convertirAMinutos(horario.fin);
+                        
+                        if (nuevoInicioMin < finExistente && nuevoFinMin > inicioExistente) {
+                            choqueDetectado = true;
+                            mensajeChoque = `🛑 Choque con el docente ${doc.nombre} (${dia} ${horario.inicio}-${horario.fin})`;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (choqueDetectado) break;
+        }
+    }
+
+    if (choqueDetectado) {
+        return lanzarToast(mensajeChoque);
+    }
+
+    // Si pasa todas las validaciones, lo agregamos exitosamente
     setHorariosEdicion([...horariosEdicion, { dia, inicio: inicioStr, fin: finStr }]);
   };
 
@@ -119,24 +178,32 @@ export default function GestionUsuarios() {
   };
 
   const alternarEstado = async (docente) => {
-    const nuevoEstado = docente.estado === 'Habilitado' ? 'Deshabilitado' : 'Habilitado';
+    let nuevoEstado = 'Habilitado';
+    if (docente.estado === 'Habilitado') {
+      nuevoEstado = 'Deshabilitado';
+    } else if (docente.estado === 'Deshabilitado') {
+      nuevoEstado = 'Habilitado';
+    } 
+    
     try {
       await set(ref(db, `docentes/${docente.id}/estado`), nuevoEstado);
       await set(ref(db, `laboratorio/usuarios/${docente.id}/habilitado`), nuevoEstado === 'Habilitado');
+      lanzarToast(`Estado actualizado a: ${nuevoEstado} 🔄`);
     } catch (error) {
       console.error("Error al cambiar estado:", error);
+      lanzarToast('❌ Error al cambiar estado');
     }
   };
 
   const eliminarDocente = async () => {
     if (idParaEliminar) {
       try {
-        await remove(ref(db, `docentes/${idParaEliminar}`));
-        await remove(ref(db, `laboratorio/usuarios/${idParaEliminar}`));
-        lanzarToast('🗑️ Credencial eliminada');
+        await set(ref(db, `docentes/${idParaEliminar}/estado`), 'Inhabilitado');
+        await set(ref(db, `laboratorio/usuarios/${idParaEliminar}/habilitado`), false);
+        lanzarToast('🚫 Credencial inhabilitada (Registro conservado)');
         setIdParaEliminar(null);
       } catch (error) {
-        lanzarToast('❌ Error al eliminar');
+        lanzarToast('❌ Error al inhabilitar');
         console.error(error);
       }
     }
@@ -148,16 +215,13 @@ export default function GestionUsuarios() {
     setHorariosEdicion([]); setRelojActivo(null); setMostrarFormulario(false); 
   };
 
-  // Función auxiliar para renderizar los laboratorios de forma limpia en la tabla
   const obtenerTextoLab = (lab) => {
     if (!lab) return '';
     return lab.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim();
   };
-  // =========================================================
 
   return (
     <div className="space-y-6 animate-fade-in-up">
-      {/* Toast Notificador Dinámico */}
       {toast && (
         <div className="fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-2xl transition-all duration-300 animate-slide-in">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-500 animate-pulse"></div>
@@ -165,7 +229,6 @@ export default function GestionUsuarios() {
         </div>
       )}
 
-      {/* Botón superior de Nuevo Usuario */}
       {!mostrarFormulario && (
         <div className="flex justify-end">
           <button 
@@ -182,7 +245,6 @@ export default function GestionUsuarios() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* FORMULARIO DE ACCESO */}
         {mostrarFormulario && (
           <div className="bg-white dark:bg-[#1E293B] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-4 h-fit lg:col-span-1 transition-all duration-300">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-3.5">
@@ -238,7 +300,6 @@ export default function GestionUsuarios() {
                 </div>
               </div>
 
-              {/* GESTIÓN DE HORARIOS INTERACTIVOS REFORMADA (image_dc2dee.png) */}
               <div className="bg-slate-50 dark:bg-[#111827]/30 p-4 rounded-xl border border-slate-200 dark:border-slate-800 mt-1">
                 <label className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase block mb-2.5 tracking-wide">Programar Franja de Acceso</label>
                 <div className="flex flex-col gap-3">
@@ -247,8 +308,6 @@ export default function GestionUsuarios() {
                   </select>
                   
                   <div className="flex gap-2">
-                    
-                    {/* ENTRADA DE APERTURA CON DESPLEGABLE CONTEXTUAL EXACTO */}
                     <div className="relative w-1/2">
                       <div 
                         onClick={() => setRelojActivo(relojActivo === 'inicio' ? null : 'inicio')} 
@@ -258,7 +317,6 @@ export default function GestionUsuarios() {
                         <span className="text-slate-800 dark:text-white text-xs font-bold">{inicioHora}:{inicioMin} <span className="text-emerald-600 font-bold">{inicioAmPm}</span></span>
                       </div>
 
-                      {/* Desplegable alineado perfectamente abajo con scrollbars de 3px */}
                       {relojActivo === 'inicio' && (
                         <div className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-[#0B1320] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl p-2.5 w-[210px]">
                           <div className="flex gap-1 h-32">
@@ -277,7 +335,6 @@ export default function GestionUsuarios() {
                       )}
                     </div>
 
-                    {/* CAJA DE CIERRE HASTA CON DESPLEGABLE CONTEXTUAL EXACTO */}
                     <div className="relative w-1/2">
                       <div 
                         onClick={() => setRelojActivo(relojActivo === 'fin' ? null : 'fin')} 
@@ -287,7 +344,6 @@ export default function GestionUsuarios() {
                         <span className="text-slate-800 dark:text-white text-xs font-bold">{finHora}:{finMin} <span className="text-orange-500 font-bold">{finAmPm}</span></span>
                       </div>
 
-                      {/* Desplegable alineado perfectamente abajo con scrollbars de 3px */}
                       {relojActivo === 'fin' && (
                         <div className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-[#0B1320] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl p-2.5 w-[210px]">
                           <div className="flex gap-1 h-32">
@@ -336,7 +392,6 @@ export default function GestionUsuarios() {
           </div>
         )}
 
-        {/* TABLA DE USUARIOS REGISTRADOS */}
         <div className={`bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-all duration-300 ${mostrarFormulario ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
           <div className="p-5 bg-slate-50 dark:bg-[#111827]/30 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
             <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -359,7 +414,7 @@ export default function GestionUsuarios() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-sm text-slate-700 dark:text-slate-300">
                 {docentes.map(doc => (
-                  <tr key={doc.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
+                  <tr key={doc.id} className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors ${doc.estado === 'Inhabilitado' ? 'opacity-60 bg-slate-50 dark:bg-slate-900/40' : ''}`}>
                     
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-3">
@@ -367,14 +422,17 @@ export default function GestionUsuarios() {
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                         </div>
                         <div>
-                          <div className="font-bold text-slate-800 dark:text-white text-sm">{doc.nombre}</div>
+                          <div className="font-bold text-slate-800 dark:text-white text-sm">
+                            {doc.nombre} 
+                            {doc.estado === 'Inhabilitado' && <span className="text-[10px] text-rose-500 ml-2 border border-rose-200 px-1.5 py-0.5 rounded uppercase tracking-widest bg-rose-50 dark:bg-rose-900/30 dark:border-rose-800">Inhabilitado</span>}
+                          </div>
                           {doc.correo && <div className="text-xs text-slate-400 font-medium mt-0.5">{doc.correo}</div>}
                         </div>
                       </div>
                     </td>
                     
                     <td className="p-4">
-                      <div className="font-mono text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center gap-1.5">
+                      <div className={`font-mono font-bold text-xs flex items-center gap-1.5 ${doc.estado === 'Inhabilitado' ? 'text-slate-400 line-through' : 'text-emerald-600 dark:text-emerald-400'}`}>
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 11-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                         {doc.uid}
                       </div>
@@ -404,7 +462,14 @@ export default function GestionUsuarios() {
                     <td className="p-4 text-center">
                       <button 
                         onClick={() => alternarEstado(doc)} 
-                        className={`px-3 py-1.5 rounded-xl border text-[11px] font-extrabold cursor-pointer uppercase tracking-wider transition-all ${doc.estado === 'Habilitado' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100' : 'bg-rose-50 dark:bg-red-500/10 text-rose-600 dark:text-red-400 border-rose-200 dark:border-red-800/40 hover:bg-rose-100'}`}
+                        className={`px-3 py-1.5 rounded-xl border text-[11px] font-extrabold cursor-pointer uppercase tracking-wider transition-all ${
+                          doc.estado === 'Habilitado' 
+                            ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100' 
+                            : doc.estado === 'Deshabilitado'
+                              ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/40 hover:bg-amber-100'
+                              : 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/40 hover:bg-rose-100'
+                        }`}
+                        title={doc.estado === 'Inhabilitado' ? "Click para volver a habilitar" : "Alternar estado de red"}
                       >
                         {doc.estado}
                       </button>
@@ -421,7 +486,8 @@ export default function GestionUsuarios() {
                         </button>
                         <button 
                           onClick={() => setIdParaEliminar(doc.id)} 
-                          className="p-2 rounded-lg bg-slate-50 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500 border border-slate-200 dark:border-slate-700 cursor-pointer shadow-sm transition-all"
+                          disabled={doc.estado === 'Inhabilitado'}
+                          className={`p-2 rounded-lg border cursor-pointer shadow-sm transition-all ${doc.estado === 'Inhabilitado' ? 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-700 cursor-not-allowed' : 'bg-slate-50 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500 border-slate-200 dark:border-slate-700'}`}
                           title="Revocar credencial"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -436,15 +502,14 @@ export default function GestionUsuarios() {
         </div>
       </div>
 
-      {/* MODAL INSTITUCIONAL PARA ELIMINAR ACCESO */}
       {idParaEliminar && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-slate-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-xl animate-fade-in-up">
             <div className="w-12 h-12 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-full flex items-center justify-center mx-auto mb-3.5">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             </div>
-            <h3 className="text-slate-900 dark:text-white font-bold text-lg">¿Revocar Permisos?</h3>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1.5 font-medium leading-relaxed">Esta acción eliminará al docente del sistema. Su tarjeta física RFID y llave PIN serán bloqueadas de inmediato.</p>
+            <h3 className="text-slate-900 dark:text-white font-bold text-lg">¿Inhabilitar Docente?</h3>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1.5 font-medium leading-relaxed">Esta acción bloqueará su tarjeta física y llave PIN de inmediato. El registro se conservará por motivos de auditoría en estado "Inhabilitado".</p>
             <div className="flex gap-3 mt-5">
               <button onClick={() => setIdParaEliminar(null)} className="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 py-2.5 rounded-xl border-0 cursor-pointer font-bold text-sm hover:bg-slate-200 transition-colors">Cancelar</button>
               <button onClick={eliminarDocente} className="flex-1 bg-rose-600 hover:bg-rose-500 text-white py-2.5 rounded-xl border-0 cursor-pointer font-bold text-sm shadow-md transition-colors">Confirmar</button>
