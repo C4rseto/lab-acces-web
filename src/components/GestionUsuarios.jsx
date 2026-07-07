@@ -55,7 +55,7 @@ export default function GestionUsuarios() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // --- LÓGICA DE VALIDACIÓN DE CHOQUE DE HORARIOS CORREGIDA ---
+  // --- LÓGICA DE VALIDACIÓN DE CHOQUE DE HORARIOS MULTI-LAB ---
   const agregarHorario = () => {
     const inicioStr = `${inicioHora}:${inicioMin} ${inicioAmPm}`;
     const finStr = `${finHora}:${finMin} ${finAmPm}`;
@@ -76,36 +76,44 @@ export default function GestionUsuarios() {
         return lanzarToast('⚠️ La hora de inicio debe ser antes que la de cierre');
     }
 
+    // Mapeo técnico de terminal para el hardware
+    let idTerminal = 'LAB_COMPUTO';
+    if (laboratorio.includes('Electrónica')) idTerminal = 'LAB_ELECTRONICA';
+    if (laboratorio.includes('Química')) idTerminal = 'LAB_QUIMICA';
+
     let choqueDetectado = false;
     let mensajeChoque = '';
 
-    // Revisión contra las horas que ya metiste en el formulario actual
+    // 1. Revisión interna en el formulario actual (mismo día y mismo laboratorio)
     for (let horario of horariosEdicion) {
-      if (horario.dia === dia) {
+      if (horario.dia === dia && horario.id_terminal === idTerminal) {
         const inicioExistente = convertirAMinutos(horario.inicio);
         const finExistente = convertirAMinutos(horario.fin);
         if (nuevoInicioMin < finExistente && nuevoFinMin > inicioExistente) {
            choqueDetectado = true;
-           mensajeChoque = `🛑 Choque con un horario ya agregado en el formulario para el ${dia}`;
+           mensajeChoque = `🛑 Choque interno para el ${dia} en este mismo laboratorio`;
            break;
         }
       }
     }
 
-    // Revisión contra los otros docentes en la base de datos (Si no hay choques internos previos)
+    // 2. Revisión contra otros docentes en la BD (Mismo laboratorio, día y cruce de horas)
     if (!choqueDetectado) {
         for (let doc of docentes) {
             if (doc.id === docenteEnEdicion) continue; 
             
-            if (doc.laboratorio === laboratorio && doc.horarios) {
-                for (let horario of doc.horarios) {
-                    if (horario.dia === dia) {
-                        const inicioExistente = convertirAMinutos(horario.inicio);
-                        const finExistente = convertirAMinutos(horario.fin);
+            if (doc.horarios) {
+                for (let h of doc.horarios) {
+                    // Fallback adaptativo: si el horario viejo no tiene id_terminal, asume el global del docente
+                    const internalTerm = h.id_terminal || (doc.laboratorio?.includes('Electrónica') ? 'LAB_ELECTRONICA' : doc.laboratorio?.includes('Química') ? 'LAB_QUIMICA' : 'LAB_COMPUTO');
+                    
+                    if (h.dia === dia && internalTerm === idTerminal) {
+                        const inicioExistente = convertirAMinutos(h.inicio);
+                        const finExistente = convertirAMinutos(h.fin);
                         
                         if (nuevoInicioMin < finExistente && nuevoFinMin > inicioExistente) {
                             choqueDetectado = true;
-                            mensajeChoque = `🛑 Choque con el docente ${doc.nombre} (${dia} ${horario.inicio}-${horario.fin})`;
+                            mensajeChoque = `🛑 Choque con ${doc.nombre} (${dia} en ${laboratorio.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '')}: ${h.inicio}-${h.fin})`;
                             break;
                         }
                     }
@@ -119,8 +127,14 @@ export default function GestionUsuarios() {
         return lanzarToast(mensajeChoque);
     }
 
-    // Si pasa todas las validaciones, lo agregamos exitosamente
-    setHorariosEdicion([...horariosEdicion, { dia, inicio: inicioStr, fin: finStr }]);
+    // Insertamos el bloque horario arrastrando las propiedades específicas de su destino
+    setHorariosEdicion([...horariosEdicion, { 
+      dia, 
+      inicio: inicioStr, 
+      fin: finStr, 
+      id_terminal: idTerminal, 
+      laboratorio_texto: laboratorio 
+    }]);
   };
 
   const removerHorario = (index) => {
@@ -153,20 +167,20 @@ export default function GestionUsuarios() {
       correo,
       uid: uid.toUpperCase(),
       pin: pinExistente, 
-      laboratorio,
-      horarios: horariosEdicion,
+      horarios: horariosEdicion, // Array con encapsulación individual de laboratorios
       estado: docenteEnEdicion ? docentes.find(d => d.id === idUnico)?.estado || 'Habilitado' : 'Habilitado'
     };
 
     try {
+      // Sincronización en espejo para paneles web y terminales IoT
       await set(ref(db, `docentes/${idUnico}`), docenteData);
       await set(ref(db, `laboratorio/usuarios/${idUnico}`), {
         nombre: docenteData.nombre,
         correo: docenteData.correo,
-        laboratorio: docenteData.laboratorio,
         habilitado: docenteData.estado === 'Habilitado',
         uid: docenteData.uid,
-        pin: docenteData.pin
+        pin: docenteData.pin,
+        horarios: docenteData.horarios // El ESP32 mapeará este array directamente
       });
 
       lanzarToast(docenteEnEdicion ? '¡Editado correctamente! ✏️' : '¡Usuario creado! ⚡');
@@ -282,26 +296,26 @@ export default function GestionUsuarios() {
                 <input type="text" maxLength="3" value={uid} onChange={e => setUid(e.target.value.toUpperCase())} className="w-full mt-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 dark:text-white font-mono uppercase tracking-widest outline-none focus:border-emerald-600 transition-colors" />
               </div>
 
-              <div className="relative">
-                <label className="text-xs font-bold tracking-wider text-slate-400 uppercase">Zona de Laboratorio</label>
-                <div className="relative mt-1.5">
-                  <select 
-                    value={laboratorio} 
-                    onChange={e => setLab(e.target.value)} 
-                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg pl-3.5 pr-10 py-2.5 text-sm text-slate-800 dark:text-white cursor-pointer outline-none focus:border-emerald-600 appearance-none font-medium"
-                  >
-                    <option value="💻 Lab. Cómputo">Lab. Cómputo</option>
-                    <option value="⚡ Lab. Electrónica">Lab. Electrónica</option>
-                    <option value="🧪 Lab. Química">Lab. Química</option>
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-                  </div>
-                </div>
-              </div>
-
               <div className="bg-slate-50 dark:bg-[#111827]/30 p-4 rounded-xl border border-slate-200 dark:border-slate-800 mt-1">
                 <label className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase block mb-2.5 tracking-wide">Programar Franja de Acceso</label>
+                
+                <div className="relative">
+                  <label className="text-xs font-bold tracking-wider text-slate-400 uppercase">Zona de Laboratorio</label>
+                  <div className="relative mt-1.5">
+                    <select 
+                      value={laboratorio} 
+                      onChange={e => setLab(e.target.value)} 
+                      className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg pl-3.5 pr-10 py-2.5 text-sm text-slate-800 dark:text-white cursor-pointer outline-none focus:border-emerald-600 appearance-none font-medium"
+                    >
+                      <option value="💻 Lab. Cómputo">Lab. Cómputo</option>
+                      <option value="⚡ Lab. Electrónica">Lab. Electrónica</option>
+                      <option value="🧪 Lab. Química">Lab. Química</option>
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                  </div>
+                </div>
                 <div className="flex flex-col gap-3">
                   <select value={dia} onChange={e => setDia(e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md p-2 text-xs text-slate-800 dark:text-white outline-none cursor-pointer">
                     <option>Lunes</option><option>Martes</option><option>Miércoles</option><option>Jueves</option><option>Viernes</option><option>Sábado</option>
@@ -375,7 +389,7 @@ export default function GestionUsuarios() {
                       <div key={i} className="flex justify-between items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl shadow-sm">
                         <span className="text-xs text-slate-700 dark:text-white font-bold flex items-center gap-1.5">
                           <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                          {h.dia}: <span className="text-slate-500 dark:text-slate-400 font-normal">{h.inicio} - {h.fin}</span>
+                          {h.laboratorio_texto} - {h.dia}: <span className="text-slate-500 dark:text-slate-400 font-normal">{h.inicio} - {h.fin}</span>
                         </span>
                         <button onClick={() => removerHorario(i)} className="text-red-500 hover:text-red-600 bg-transparent border-0 cursor-pointer font-bold text-xs p-1">✕</button>
                       </div>
@@ -386,7 +400,7 @@ export default function GestionUsuarios() {
 
               <button onClick={guardarDocente} className="w-full bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl py-3.5 mt-2 border-0 cursor-pointer shadow-md transition-all text-sm tracking-wide flex items-center justify-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                Sincronizar Dispositivo
+                GUARDAR NUEVO USUARIO
               </button>
             </div>
           </div>

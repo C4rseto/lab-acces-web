@@ -71,11 +71,18 @@ export default function Prestamos() {
 
     let mensajeChoque = null;
 
-    // REVISIÓN 1: ¿Choca con una CLASE REGULAR?
+    // Convertimos el texto de la reserva móvil a identificador estándar de hardware
+    let idTerminalBuscado = 'LAB_COMPUTO';
+    if (seleccionada.laboratorio.includes('Electrónica')) idTerminalBuscado = 'LAB_ELECTRONICA';
+    if (seleccionada.laboratorio.includes('Química')) idTerminalBuscado = 'LAB_QUIMICA';
+
+    // REVISIÓN 1: ¿Choca con alguna CLASE REGULAR asignada en ese bloque y terminal?
     const choqueClase = docentes.some(doc => {
-      if (doc.estado === 'Habilitado' && doc.laboratorio === seleccionada.laboratorio && doc.horarios) {
+      if (doc.estado === 'Habilitado' && doc.horarios) {
         return doc.horarios.some(h => {
-          if (h.dia === diaSemanaSolicitado) {
+          const internalTerm = h.id_terminal || (doc.laboratorio?.includes('Electrónica') ? 'LAB_ELECTRONICA' : doc.laboratorio?.includes('Química') ? 'LAB_QUIMICA' : 'LAB_COMPUTO');
+          
+          if (h.dia === diaSemanaSolicitado && internalTerm === idTerminalBuscado) {
             const claseInicio = convertirAMinutos(h.inicio);
             const claseFin = convertirAMinutos(h.fin);
             return (nuevoInicioMin < claseFin && nuevoFinMin > claseInicio);
@@ -87,7 +94,7 @@ export default function Prestamos() {
     });
 
     if (choqueClase) {
-      mensajeChoque = `Cruce de horario con una CLASE REGULAR en el ${seleccionada.laboratorio}.`;
+      mensajeChoque = `Cruce de horario con una CLASE REGULAR programada para este laboratorio.`;
     } else {
       // REVISIÓN 2: ¿Choca con otra RESERVA YA APROBADA?
       const choqueReserva = historial.some(reserva => {

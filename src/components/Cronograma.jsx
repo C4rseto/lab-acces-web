@@ -64,18 +64,24 @@ export default function Cronograma() {
         const estiloAsignado = paletaCorporativa[colorIndex];
 
         doc.horarios?.forEach(h => {
-          if (mapa[h.dia] && (filtroLab === 'Todos' || doc.laboratorio?.includes(filtroLab))) {
-            mapa[h.dia].push({ 
-              tipo: 'Clase Regular', titulo: doc.nombre, lab: doc.laboratorio, 
-              inicio: h.inicio, fin: h.fin, correo: doc.correo || 'No especificado',
-              uid: doc.uid || 'RFID Activo', estilo: estiloAsignado 
-            });
+          // Fallback adaptativo para compatibilidad con registros antiguos
+          const internalTerm = h.id_terminal || (doc.laboratorio?.includes('Electrónica') ? 'LAB_ELECTRONICA' : doc.laboratorio?.includes('Química') ? 'LAB_QUIMICA' : 'LAB_COMPUTO');
+          const txtLab = h.laboratorio_texto || doc.laboratorio || 'General';
+
+          if (mapa[h.dia]) {
+            if (filtroLab === 'Todos' || internalTerm === (filtroLab === 'Lab. Cómputo' ? 'LAB_COMPUTO' : filtroLab === 'Lab. Electrónica' ? 'LAB_ELECTRONICA' : 'LAB_QUIMICA')) {
+              mapa[h.dia].push({ 
+                tipo: 'Clase Regular', titulo: doc.nombre, lab: txtLab, 
+                inicio: h.inicio, fin: h.fin, correo: doc.correo || 'No especificado',
+                uid: doc.uid || 'RFID Activo', estilo: estiloAsignado 
+              });
+            }
           }
         });
       }
     });
 
-    const obtenerDiaSemana = (fechaStr) => {
+  const obtenerDiaSemana = (fechaStr) => {
       if (!fechaStr) return null;
       if (diasSemana.includes(fechaStr)) return fechaStr; 
       const partes = fechaStr.split('/');
@@ -101,7 +107,7 @@ export default function Cronograma() {
 
     return mapa;
   };
-
+  
   const limpiarTextoLab = (lab) => lab ? lab.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim() : '';
 
   const datosDia = cronogramaPorDia();
