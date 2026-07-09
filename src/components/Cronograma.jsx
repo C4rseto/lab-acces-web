@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { ref, onValue } from 'firebase/database';
 
-// Conversor inteligente de tiempo
+// Conversor inteligente de tiempo (Mantiene el parche para detectar PM automáticamente)
 const convertirAMinutos = (horaStr) => {
   if (!horaStr) return 0;
   const trimmed = horaStr.trim().toUpperCase();
@@ -64,6 +64,7 @@ export default function Cronograma() {
         const estiloAsignado = paletaCorporativa[colorIndex];
 
         doc.horarios?.forEach(h => {
+          // Fallback adaptativo para compatibilidad con registros antiguos
           const internalTerm = h.id_terminal || (doc.laboratorio?.includes('Electrónica') ? 'LAB_ELECTRONICA' : doc.laboratorio?.includes('Química') ? 'LAB_QUIMICA' : 'LAB_COMPUTO');
           const txtLab = h.laboratorio_texto || doc.laboratorio || 'General';
 
@@ -113,9 +114,24 @@ export default function Cronograma() {
   const totalClases = Object.values(datosDia).flat().filter(e => e.tipo === 'Clase Regular').length;
   const totalExtras = Object.values(datosDia).flat().filter(e => e.tipo === 'Reserva Especial').length;
 
-  // Configuración de la cuadrícula de horas (7 AM a 10 PM)
-  const horasBase = Array.from({ length: 16 }, (_, i) => i + 7); 
-  const pixelPorMinuto = 1; // 60px por hora
+  // =========================================================
+  // 🧠 GENERADOR DE BLOQUES HORARIOS ÚNICOS (MATRIZ)
+  // Extrae todos los rangos de horas y los ordena de arriba hacia abajo
+  // =========================================================
+  const obtenerBloquesDeTiempo = () => {
+    const bloquesSet = new Set();
+    Object.values(datosDia).flat().forEach(ev => {
+      bloquesSet.add(`${ev.inicio} - ${ev.fin}`);
+    });
+    
+    return Array.from(bloquesSet).sort((a, b) => {
+      const inicioA = convertirAMinutos(a.split(' - ')[0]);
+      const inicioB = convertirAMinutos(b.split(' - ')[0]);
+      return inicioA - inicioB;
+    });
+  };
+
+  const bloquesHorarios = obtenerBloquesDeTiempo();
 
   return (
     <div className="space-y-6 animate-fade-in-up pb-10">
@@ -127,9 +143,9 @@ export default function Cronograma() {
             <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-[#1E293B] flex items-center justify-center border border-indigo-100 dark:border-slate-700 shadow-sm">
               <svg className="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
             </div>
-            Cronograma del Laboratorio
+            Matriz de Ocupación
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm font-medium">Vista de calendario dinámico con asignaciones en tiempo real.</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm font-medium">Vista de tabla clásica alineada por franjas horarias.</p>
         </div>
 
         {/* SELECTOR DE PESTAÑAS (LABORATORIOS) */}
@@ -167,78 +183,104 @@ export default function Cronograma() {
         </div>
       </div>
 
-      {/* 🚀 CALENDARIO ESTILO GOOGLE CALENDAR 🚀 */}
-      <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex overflow-hidden">
-        
-        {/* Columna de Horas Fija */}
-        <div className="w-[70px] flex-shrink-0 border-r border-slate-200 dark:border-slate-700/60 bg-slate-50 dark:bg-[#1E293B] pt-[50px]">
-          {horasCalendario.map((hora, i) => (
-            <div key={i} className="h-[60px] relative">
-              <span className="absolute -top-2.5 right-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono tracking-tight">
-                {hora}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Contenedor scrolleable de Días */}
-        <div className="flex-1 overflow-x-auto [&::-webkit-scrollbar]:h-[6px] [&::-webkit-scrollbar-thumb]:bg-slate-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-track]:bg-transparent">
-          <div className="min-w-[800px] flex relative pt-[50px] pb-5">
+      {/* 🚀 TABLA DE MATRIZ DE HORARIOS (DISEÑO UNIVERSITARIO CLÁSICO) 🚀 */}
+      <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto [&::-webkit-scrollbar]:h-[6px] [&::-webkit-scrollbar-thumb]:bg-slate-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-track]:bg-transparent">
+          
+          <table className="w-full text-left border-collapse min-w-[1000px]">
+            {/* CABECERA (DÍAS DE LA SEMANA) */}
+            <thead className="bg-slate-50 dark:bg-[#1E293B]">
+              <tr>
+                <th className="p-4 border-b border-r border-slate-200 dark:border-slate-700 w-[140px] sticky left-0 bg-slate-50 dark:bg-[#1E293B] z-20 shadow-[1px_0_0_0_rgba(226,232,240,1)] dark:shadow-[1px_0_0_0_rgba(51,65,85,1)]">
+                  <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    HORARIO
+                  </span>
+                </th>
+                {diasSemana.map(dia => (
+                  <th key={dia} className="p-4 border-b border-slate-200 dark:border-slate-700 text-center w-[14%]">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{dia}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
             
-            {/* Cabecera de Días Flotante */}
-            <div className="absolute top-0 left-0 right-0 h-[50px] flex border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] z-20">
-              {diasSemana.map(dia => (
-                <div key={dia} className="flex-1 flex items-center justify-center border-r border-slate-100 dark:border-slate-800/40 last:border-0">
-                  <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-widest">{dia}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Rejilla de Fondo */}
-            <div className="absolute inset-0 top-[50px] pointer-events-none flex flex-col">
-              {listaHorasUI.map((_, i) => (
-                <div key={i} className="h-[60px] border-b border-slate-100 dark:border-slate-800/40 w-full"></div>
-              ))}
-            </div>
-
-            {/* Columnas Dinámicas de Eventos */}
-            {diasSemana.map((dia) => (
-              <div key={dia} className="flex-1 relative border-r border-slate-100 dark:border-slate-800/40 min-h-[900px] last:border-0">
-                {datosDia[dia]?.map((ev, idx) => {
-                  const inicioMinutos = convertirAMinutos(ev.inicio);
-                  const finMinutos = convertirAMinutos(ev.fin);
-                  const offsetBase = 7 * 60; // Arrancamos a las 7 AM
-                  
-                  const top = (inicioMinutos - offsetBase) * pixelPorMinuto;
-                  const height = (finMinutos - inicioMinutos) * pixelPorMinuto;
-
-                  // Evitamos renderizar si está fuera del rango
-                  if (height <= 0 || top < 0) return null;
-
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => setEventoSeleccionado({ ...ev, diaSemana: dia })}
-                      className={`absolute left-1 right-1 rounded p-1.5 cursor-pointer shadow-sm overflow-hidden transition-all hover:z-30 hover:scale-[1.02] opacity-95 flex flex-col justify-start border ${ev.estilo.bg} ${ev.estilo.border}`}
-                      style={{ top: `${top}px`, height: `${height}px`, zIndex: 10 + idx }}
-                    >
-                      <span className="text-[9px] font-bold opacity-80 leading-none truncate mb-0.5">
-                        {ev.inicio} - {ev.fin}
-                      </span>
-                      <h4 className={`text-[10px] font-bold leading-tight ${height < 45 ? 'truncate' : ''} ${ev.estilo.text}`}>
-                        {ev.titulo}
-                      </h4>
-                      {height >= 50 && (
-                        <span className="text-[8px] font-semibold text-slate-500 dark:text-slate-400 truncate mt-auto">
-                          {limpiarTextoLab(ev.lab)}
-                        </span>
-                      )}
+            {/* CUERPO DE LA TABLA (FILAS POR RANGO DE HORA) */}
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+              
+              {bloquesHorarios.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="p-16 text-center">
+                    <div className="flex flex-col items-center justify-center opacity-60">
+                      <svg className="w-10 h-10 text-slate-400 mb-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
+                      <span className="text-sm text-slate-500 font-bold uppercase tracking-widest">Sin horarios programados</span>
                     </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+                  </td>
+                </tr>
+              ) : (
+                bloquesHorarios.map((bloque, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
+                    
+                    {/* COLUMNA FIJA: HORA */}
+                    <td className="p-3 border-r border-slate-200 dark:border-slate-700/60 align-top sticky left-0 bg-white dark:bg-[#111827] group-hover:bg-slate-50/50 dark:group-hover:bg-slate-800/30 shadow-[1px_0_0_0_rgba(226,232,240,1)] dark:shadow-[1px_0_0_0_rgba(51,65,85,0.6)] z-10 transition-colors">
+                      <div className="flex flex-col gap-0.5 mt-1">
+                        <span className="text-xs font-black text-slate-800 dark:text-slate-200 font-mono tracking-tight">{bloque.split(' - ')[0]}</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono tracking-tight">{bloque.split(' - ')[1]}</span>
+                      </div>
+                    </td>
+
+                    {/* COLUMNAS DE DÍAS */}
+                    {diasSemana.map(dia => {
+                      // Filtramos los eventos que caen EXACTAMENTE en este bloque de horario y en este día
+                      const eventosEnCelda = datosDia[dia]?.filter(e => `${e.inicio} - ${e.fin}` === bloque) || [];
+
+                      return (
+                        <td key={dia} className="p-2.5 border-r border-slate-100 dark:border-slate-800/40 align-top last:border-r-0">
+                          {eventosEnCelda.length > 0 ? (
+                            <div className="flex flex-col gap-2.5">
+                              {eventosEnCelda.map((ev, i) => (
+                                <div 
+                                  key={i} 
+                                  onClick={() => setEventoSeleccionado({ ...ev, diaSemana: dia })}
+                                  className={`cursor-pointer rounded-lg p-3 transition-transform hover:-translate-y-0.5 shadow-sm border ${ev.estilo.bg} ${ev.estilo.border}`}
+                                >
+                                  <div className="flex justify-between items-start mb-1.5">
+                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-widest ${ev.estilo.tag}`}>
+                                      {ev.tipo === 'Clase Regular' ? 'CLASE' : 'EXTRA'}
+                                    </span>
+                                    {/* MUESTRA DE FECHA PARA LAS RESERVAS */}
+                                    {ev.fechaExacta && (
+                                      <span className={`text-[9px] font-bold tracking-wider opacity-80 ${ev.estilo.text}`}>
+                                        {ev.fechaExacta}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h4 className={`text-xs font-bold leading-snug break-words mb-2 ${ev.estilo.text}`}>
+                                    {ev.titulo}
+                                  </h4>
+                                  <div className="flex items-center gap-1 mt-auto pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+                                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+                                      {limpiarTextoLab(ev.lab)}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            // CELDA VACÍA SUTIL
+                            <div className="w-full h-full min-h-[60px] flex items-center justify-center">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800"></span>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -259,6 +301,8 @@ export default function Cronograma() {
                 </button>
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">{eventoSeleccionado.titulo}</h3>
+              
+              {/* FECHA AÑADIDA AL MODAL TAMBIÉN */}
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
                 {eventoSeleccionado.fechaExacta ? `${eventoSeleccionado.fechaExacta} • ` : ''}{eventoSeleccionado.diaSemana} • {eventoSeleccionado.inicio} - {eventoSeleccionado.fin}
               </p>
@@ -304,10 +348,3 @@ export default function Cronograma() {
     </div>
   );
 }
-
-// Constantes fuera del componente para uso del render
-const horasCalendario = [
-  '7 AM', '8 AM', '9 AM', '10 AM', '11 AM', '12 PM', 
-  '1 PM', '2 PM', '3 PM', '4 PM', '5 PM', '6 PM', '7 PM', '8 PM', '9 PM'
-];
-const listaHorasUI = Array.from({ length: 15 });
