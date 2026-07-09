@@ -21,6 +21,8 @@ export default function Dashboard() {
   const [hardResetStatus, setHardResetStatus] = useState(false);
   const [mostrarModalReset, setMostrarModalReset] = useState(false);
 
+  const [ultimoPing, setUltimoPing] = useState(0);
+  const [terminalOffline, setTerminalOffline] = useState(false);
   // =========================================================
   // TU LÓGICA DE FIREBASE Y HARDWARE INTACTA
   // =========================================================
@@ -47,6 +49,23 @@ export default function Dashboard() {
     });
   }, []);
 
+  // LÓGICA DE DETECCIÓN DE CAÍDA (WATCHDOG LOCAL)
+  useEffect(() => {
+    // Revisamos la salud del terminal cada 5 segundos localmente
+    const interval = setInterval(() => {
+      const horaActualUnix = Math.floor(Date.now() / 1000);
+      
+      // Si el último ping fue hace más de 90 segundos, declaramos la caída
+      if (ultimoPing !== 0 && (horaActualUnix - ultimoPing > 90)) {
+        setTerminalOffline(true);
+      } else {
+        setTerminalOffline(false);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [ultimoPing]);
+
   useEffect(() => {
     let nodoFirebase = '';
     if (labSeleccionado.includes('Cómputo')) nodoFirebase = 'LAB_COMPUTO';
@@ -59,6 +78,7 @@ export default function Dashboard() {
         setPestilloAbierto(val.estado_puerta === 'ABIERTA');
         setOcupacion(val.ocupacion || 0);
         setHardResetStatus(val.hard_reset || false);
+        setUltimoPing(val.ultimo_ping || 0);
       } else {
         setPestilloAbierto(false);
         setOcupacion(0);
@@ -161,6 +181,15 @@ export default function Dashboard() {
             Panel de Control 
             <span className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[10px] px-2 py-0.5 rounded-md uppercase tracking-widest font-extrabold shadow-sm">
               Modo Administrador
+            </span>
+            {/* INDICADOR DE CONEXIÓN EN TIEMPO REAL */}
+            <span className={`flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-full uppercase tracking-widest font-bold ml-2 ${
+              terminalOffline 
+              ? 'bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' 
+              : 'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${terminalOffline ? 'bg-rose-600 dark:bg-rose-500' : 'bg-emerald-600 dark:bg-emerald-500 animate-pulse'}`}></span>
+              {terminalOffline ? 'HW DESCONECTADO' : 'HW EN LÍNEA'}
             </span>
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm font-medium">Monitoreo de accesos, aforo y sincronización móvil en tiempo real.</p>
