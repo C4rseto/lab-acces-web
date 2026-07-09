@@ -248,6 +248,12 @@ export default function Cronograma() {
                                     <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-widest ${ev.estilo.tag}`}>
                                       {ev.tipo === 'Clase Regular' ? 'CLASE' : 'EXTRA'}
                                     </span>
+                                    {/* MUESTRA DE FECHA PARA LAS RESERVAS */}
+                                    {ev.fechaExacta && (
+                                      <span className={`text-[9px] font-bold tracking-wider opacity-80 ${ev.estilo.text}`}>
+                                        {ev.fechaExacta}
+                                      </span>
+                                    )}
                                   </div>
                                   <h4 className={`text-xs font-bold leading-snug break-words mb-2 ${ev.estilo.text}`}>
                                     {ev.titulo}
@@ -295,7 +301,11 @@ export default function Cronograma() {
                 </button>
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">{eventoSeleccionado.titulo}</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">{eventoSeleccionado.diaSemana} • {eventoSeleccionado.inicio} - {eventoSeleccionado.fin}</p>
+              
+              {/* FECHA AÑADIDA AL MODAL TAMBIÉN */}
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
+                {eventoSeleccionado.fechaExacta ? `${eventoSeleccionado.fechaExacta} • ` : ''}{eventoSeleccionado.diaSemana} • {eventoSeleccionado.inicio} - {eventoSeleccionado.fin}
+              </p>
             </div>
 
             <div className="p-5 space-y-4 text-xs">

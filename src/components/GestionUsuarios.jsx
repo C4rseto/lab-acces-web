@@ -316,7 +316,7 @@ export default function GestionUsuarios() {
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 mt-3">
                   <select value={dia} onChange={e => setDia(e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md p-2 text-xs text-slate-800 dark:text-white outline-none cursor-pointer">
                     <option>Lunes</option><option>Martes</option><option>Miércoles</option><option>Jueves</option><option>Viernes</option><option>Sábado</option>
                   </select>
@@ -328,11 +328,13 @@ export default function GestionUsuarios() {
                         className={`w-full border rounded-md bg-white dark:bg-slate-800 p-2.5 flex items-center justify-center relative cursor-pointer shadow-sm transition-all ${relojActivo === 'inicio' ? 'border-emerald-600 ring-1 ring-emerald-600/20' : 'border-slate-200 dark:border-slate-700'}`}
                       >
                         <span className="absolute -top-2 left-1.5 bg-slate-50 dark:bg-[#1A2332] px-1 text-[8px] text-slate-400 uppercase font-bold">Apertura</span>
-                        <span className="text-slate-800 dark:text-white text-xs font-bold">{inicioHora}:{inicioMin} <span className="text-emerald-600 font-bold">{inicioAmPm}</span></span>
+                        {/* Se agregó translate="no" aquí */}
+                        <span translate="no" className="text-slate-800 dark:text-white text-xs font-bold">{inicioHora}:{inicioMin} <span className="text-emerald-600 font-bold">{inicioAmPm}</span></span>
                       </div>
 
                       {relojActivo === 'inicio' && (
-                        <div className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-[#0B1320] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl p-2.5 w-[210px]">
+                        /* Se agregó translate="no" al contenedor del reloj */
+                        <div translate="no" className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-[#0B1320] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl p-2.5 w-[210px]">
                           <div className="flex gap-1 h-32">
                             <div className="w-1/3 overflow-y-auto flex flex-col gap-0.5 pr-0.5 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-slate-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
                               {listaHoras.map(h => <button key={h} type="button" onClick={() => setInicioHora(h)} className={`py-1 text-xs font-bold rounded border-0 cursor-pointer ${inicioHora === h ? 'bg-emerald-600 text-white' : 'bg-transparent text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{h}</button>)}
@@ -355,11 +357,13 @@ export default function GestionUsuarios() {
                         className={`w-full border rounded-md bg-white dark:bg-slate-800 p-2.5 flex items-center justify-center relative cursor-pointer shadow-sm transition-all ${relojActivo === 'fin' ? 'border-orange-400 ring-1 ring-orange-400/20' : 'border-slate-200 dark:border-slate-700'}`}
                       >
                         <span className="absolute -top-2 left-1.5 bg-slate-50 dark:bg-[#1A2332] px-1 text-[8px] text-slate-400 uppercase font-bold">Cierre</span>
-                        <span className="text-slate-800 dark:text-white text-xs font-bold">{finHora}:{finMin} <span className="text-orange-500 font-bold">{finAmPm}</span></span>
+                        {/* Se agregó translate="no" aquí */}
+                        <span translate="no" className="text-slate-800 dark:text-white text-xs font-bold">{finHora}:{finMin} <span className="text-orange-500 font-bold">{finAmPm}</span></span>
                       </div>
 
                       {relojActivo === 'fin' && (
-                        <div className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-[#0B1320] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl p-2.5 w-[210px]">
+                        /* Se agregó translate="no" al contenedor del reloj */
+                        <div translate="no" className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-[#0B1320] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl p-2.5 w-[210px]">
                           <div className="flex gap-1 h-32">
                             <div className="w-1/3 overflow-y-auto flex flex-col gap-0.5 pr-0.5 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-slate-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
                               {listaHoras.map(h => <button key={h} type="button" onClick={() => setFinHora(h)} className={`py-1 text-xs font-bold rounded border-0 cursor-pointer ${finHora === h ? 'bg-orange-500 text-white' : 'bg-transparent text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{h}</button>)}
