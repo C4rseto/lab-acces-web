@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { db } from '../firebase';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, update} from 'firebase/database';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -16,6 +17,9 @@ export default function Dashboard() {
   
   const [pestilloAbierto, setPestilloAbierto] = useState(false);
   const [ocupacion, setOcupacion] = useState(0);
+
+  const [hardResetStatus, setHardResetStatus] = useState(false);
+  const [mostrarModalReset, setMostrarModalReset] = useState(false);
 
   // =========================================================
   // TU LÓGICA DE FIREBASE Y HARDWARE INTACTA
@@ -54,14 +58,31 @@ export default function Dashboard() {
       if (val) {
         setPestilloAbierto(val.estado_puerta === 'ABIERTA');
         setOcupacion(val.ocupacion || 0);
+        setHardResetStatus(val.hard_reset || false);
       } else {
         setPestilloAbierto(false);
         setOcupacion(0);
+        setHardResetStatus(false);
       }
     });
 
     return () => unsubscribe();
   }, [labSeleccionado]);
+
+  const ejecutarReset = () => {
+    let nodoFirebase = '';
+    if (labSeleccionado.includes('Cómputo')) nodoFirebase = 'LAB_COMPUTO';
+    if (labSeleccionado.includes('Electrónica')) nodoFirebase = 'LAB_ELECTRONICA';
+    if (labSeleccionado.includes('Química')) nodoFirebase = 'LAB_QUIMICA';
+
+    update(ref(db, `configuracion_laboratorios/${nodoFirebase}`), {
+      hard_reset: true
+    }).then(() => {
+      setMostrarModalReset(false);
+    }).catch((error) => {
+      console.error("Error al actualizar hard_reset:", error);
+    });
+  };
 
   const coincideLab = (labDB) => {
     const dbString = labDB.toUpperCase();
@@ -95,7 +116,43 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in-up pb-10">
+    <div className="space-y-6 animate-fade-in-up pb-10 relative">
+    
+    {/* MODAL RENDERIZADO A TRAVÉS DE UN PORTAL */}
+      {mostrarModalReset && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#111827] border border-rose-500/30 rounded-2xl shadow-2xl max-w-md w-full p-6 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-rose-500"></div>
+            
+            <div className="flex items-center gap-4 mb-4">
+              <div className="bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 p-3 rounded-full">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Confirmar Reseteo</h3>
+            </div>
+            
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+              <strong>Advertencia de Seguridad:</strong> Si le da a continuar, la clave maestra de acceso de este laboratorio se reseteará a su valor de fábrica. El sistema quedará <span className="text-rose-600 dark:text-rose-400 font-bold">vulnerable</span> hasta que configure una nueva clave localmente.
+            </p>
+            
+            <div className="flex gap-3 justify-end">
+              <button 
+                onClick={() => setMostrarModalReset(false)}
+                className="cursor-pointer px-4 py-2 rounded-lg text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 dark:text-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
+              >
+                Cancelar (NO)
+              </button>
+              <button 
+                onClick={ejecutarReset}
+                className="cursor-pointer px-4 py-2 rounded-lg text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-500/20 transition-colors"
+              >
+                Confirmar (SÍ)
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body // <-- EL DESTINO DEL PORTAL
+      )}
       
       {/* TÍTULO Y FILTRADO SUPERIOR */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-slate-200/50 dark:border-slate-800/80 pb-5">
@@ -162,28 +219,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tarjeta 2: Ocupación 
-        <div className="relative bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 overflow-hidden flex flex-col justify-between shadow-sm">
-          <div className="absolute -top-6 -right-6 w-32 h-32 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-2xl pointer-events-none"></div>
-          <div className="flex justify-between items-start z-10">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Ocupación Actual</p>
-              <h3 className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">
-                {ocupacion} <span className="text-xs font-bold text-slate-400 dark:text-slate-500 lowercase">pax</span>
-              </h3>
-            </div>
-            <div className="p-2.5 bg-slate-50 dark:bg-[#1E293B] border border-slate-100 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-2.533-3.076l-1.408-.391a4.131 4.131 0 01-2.533-3.076 4.147 4.147 0 01.168-1.932 4.147 4.147 0 011.165-1.579A3 3 0 1012.3 3.197a4.5 4.5 0 00-1.889 2.08 4.5 4.5 0 00.324 4.316l1.392 2.404a4.502 4.502 0 01-.6 5.093l-1.464 1.463zm0 0v1.213a2.25 2.25 0 002.25 2.25h3.54a2.25 2.25 0 002.25-2.25v-1.213a11.51 11.51 0 01-4.47 1.056 11.52 11.52 0 01-3.57-.456zM3.375 19.5h10.25c.621 0 1.125-.504 1.125-1.125v-1.213a11.51 11.51 0 00-4.47 1.056 11.52 11.52 0 00-3.57-.456v1.213c0 .621.504 1.125 1.125 1.125zm0 0h10.25M3.375 19.5A1.125 1.125 0 012.25 18.375v-1.213a11.51 11.51 0 014.47-1.056c1.272.33 2.476.456 3.57.456v1.213c0 .621-.504 1.125-1.125 1.125H3.375z" /></svg>
-            </div>
-          </div>
-          <div className="mt-4 z-10">
-            <span className={`text-xs font-semibold ${ocupacion === 0 ? 'text-emerald-600 dark:text-emerald-500/80' : 'text-blue-600 dark:text-blue-400/80'}`}>
-              {ocupacion === 0 ? 'Instalación vacía' : 'Aforo en uso'}
-            </span>
-          </div>
-        </div>*/}
-
-        {/* Tarjeta 3: Alertas */}
+        {/* Tarjeta 2: Alertas */}
         <div className="relative bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 overflow-hidden flex flex-col justify-between shadow-sm">
           <div className="absolute -top-6 -right-6 w-32 h-32 bg-amber-500/5 dark:bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
           <div className="flex justify-between items-start z-10">
@@ -202,7 +238,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tarjeta 4: App Móvil */}
+        {/* Tarjeta 3: App Móvil */}
         <div className={`relative border rounded-xl p-5 overflow-hidden flex flex-col justify-between shadow-sm transition-all duration-300 ${reservasPendientes > 0 ? 'bg-white dark:bg-[#111827] border-amber-500/40 dark:border-amber-500/30 shadow-amber-500/5' : 'bg-white dark:bg-[#111827] border-slate-200 dark:border-slate-800'}`}>
           {reservasPendientes > 0 && (
             <div className="absolute -top-6 -right-6 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none animate-pulse"></div>
@@ -225,6 +261,40 @@ export default function Dashboard() {
             >
               Evaluar solicitudes <span className="group-hover:translate-x-0.5 transition-transform">→</span>
             </button>
+          </div>
+        </div>
+
+        {/* Tarjeta 4: Control de Clave (NUEVO) */}
+        <div className={`relative border rounded-xl p-5 overflow-hidden flex flex-col justify-between shadow-sm transition-all duration-300 ${hardResetStatus ? 'bg-rose-50/50 dark:bg-rose-900/10 border-rose-300 dark:border-rose-500/30' : 'bg-white dark:bg-[#111827] border-slate-200 dark:border-slate-800'}`}>
+          <div className="flex justify-between items-start z-10">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Clave Admin</p>
+              
+              <h3 className={`text-xl font-bold tracking-tight mt-1 ${hardResetStatus ? 'text-rose-600 dark:text-rose-400 animate-pulse' : 'text-slate-800 dark:text-white'}`}>
+                {hardResetStatus ? 'RESETEANDO...' : 'OPERATIVA'}
+              </h3>
+            </div>
+            
+            {/* Ícono de Casco/Seguridad */}
+            <div className={`p-2.5 rounded-lg border ${hardResetStatus ? 'bg-rose-100 border-rose-200 text-rose-600 dark:bg-rose-500/20 dark:border-rose-500/30 dark:text-rose-400' : 'bg-slate-50 border-slate-100 text-slate-500 dark:bg-[#1E293B] dark:border-slate-700 dark:text-slate-400'}`}>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </svg>
+            </div>
+          </div>
+          
+          <div className="mt-4 z-10">
+             <button 
+                onClick={() => setMostrarModalReset(true)}
+                disabled={hardResetStatus}
+                className={`w-full py-1.5 rounded-md text-xs font-bold transition-all border outline-none ${
+                  hardResetStatus 
+                  ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700' 
+                  : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20 dark:hover:bg-rose-500/20'
+                }`}
+              >
+                RESETEAR DE FÁBRICA
+              </button>
           </div>
         </div>
 
