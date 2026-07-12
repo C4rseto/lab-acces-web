@@ -63,10 +63,11 @@ function AdminLayout({ children, esOscuro, setEsOscuro }) {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 Reportes / Auditoría
               </button>
-              <button onClick={() => navigate('/gestion-admins')} className={isActive('/gestion-admins')}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3a5 5 0 00-5 5v1.28A2 2 0 005 11.2V13a1 1 0 001 1h12a1 1 0 001-1v-1.8a2 2 0 00-2-1.92V8a5 5 0 00-5-5zm-3 6V8a3 3 0 116 0v1H9zm-2 4h10" /></svg>
-                Gestión de Administradores
-              </button>
+              {rolUsuario === 'SUPER_ADMIN' && (
+                <button onClick={() => navigate('/gestion-admins')} className={isActive('/gestion-admins')}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3a5 5 0 00-5 5v1.28A2 2 0 005 11.2V13a1 1 0 001 1h12a1 1 0 001-1v-1.8a2 2 0 00-2-1.92V8a5 5 0 00-5-5zm-3 6V8a3 3 0 116 0v1H9zm-2 4h10" /></svg>
+                  Gestión de Administradores
+                </button>)}
             </nav>
           </div>
         </div>

@@ -7,32 +7,62 @@ import { ref, onValue, update} from 'firebase/database';
 export default function Dashboard() {
   const navigate = useNavigate();
   
-  // SELECTOR SIN LA OPCIÓN "TODOS"
-  const laboratorios = ['💻 Lab. Cómputo', '⚡ Lab. Electrónica', '🧪 Lab. Química'];
-  const [labSeleccionado, setLabSeleccionado] = useState('💻 Lab. Cómputo');
+  // NUEVOS ESTADOS DINÁMICOS
+  const [laboratoriosPermitidos, setLaboratoriosPermitidos] = useState([]);
+  const [labSeleccionadoId, setLabSeleccionadoId] = useState(''); // Guarda el id_terminal exacto
+  const [nombreLabVisual, setNombreLabVisual] = useState('');
 
   const [docentes, setDocentes] = useState([]);
   const [todasAuditorias, setTodasAuditorias] = useState([]);
   const [todasReservas, setTodasReservas] = useState([]);
   
+  // Estados de Hardware
   const [pestilloAbierto, setPestilloAbierto] = useState(false);
   const [ocupacion, setOcupacion] = useState(0);
-
   const [hardResetStatus, setHardResetStatus] = useState(false);
   const [mostrarModalReset, setMostrarModalReset] = useState(false);
-
   const [ultimoPing, setUltimoPing] = useState(0);
   const [terminalOffline, setTerminalOffline] = useState(false);
-  // =========================================================
-  // TU LÓGICA DE FIREBASE Y HARDWARE INTACTA
-  // =========================================================
+
   useEffect(() => {
-    onValue(ref(db, 'docentes'), (snapshot) => {
+    // 1. CARGA DINÁMICA DE SEDES Y LABORATORIOS (RBAC)
+    const unsubSedes = onValue(ref(db, 'sedes'), (snapshot) => {
       const data = snapshot.val();
-      setDocentes(data ? Object.values(data) : []);
+      if (data) {
+        const rolAdmin = localStorage.getItem('adminRol');
+        const sedeAdmin = localStorage.getItem('adminSede');
+        let labs = [];
+
+        // Filtrado por permisos
+        if (rolAdmin === 'SUPER_ADMIN' || sedeAdmin === 'TODAS') {
+          Object.values(data).forEach(sedeObj => {
+            if(sedeObj.laboratorios) {
+              Object.entries(sedeObj.laboratorios).forEach(([key, val]) => {
+                labs.push({ id: key, nombre: val });
+              });
+            }
+          });
+        } else if (data[sedeAdmin] && data[sedeAdmin].laboratorios) {
+          Object.entries(data[sedeAdmin].laboratorios).forEach(([key, val]) => {
+            labs.push({ id: key, nombre: val });
+          });
+        }
+
+        setLaboratoriosPermitidos(labs);
+        // Autoseleccionar el primero si no hay ninguno seleccionado
+        if (labs.length > 0 && !labSeleccionadoId) {
+          setLabSeleccionadoId(labs[0].id);
+          setNombreLabVisual(labs[0].nombre);
+        }
+      }
     });
 
-    onValue(ref(db, 'laboratorio/auditoria'), (snapshot) => {
+    // 2. Carga de Docentes, Auditoría y Reservas (Se mantiene igual)
+    const unsubDocentes = onValue(ref(db, 'docentes'), (snapshot) => {
+      setDocentes(snapshot.val() ? Object.values(snapshot.val()) : []);
+    });
+
+    const unsubAuditoria = onValue(ref(db, 'laboratorio/auditoria'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
         const logs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
@@ -43,36 +73,28 @@ export default function Dashboard() {
       }
     });
 
-    onValue(ref(db, 'reservas'), (snapshot) => {
-      const data = snapshot.val();
-      setTodasReservas(data ? Object.values(data) : []);
+    const unsubReservas = onValue(ref(db, 'reservas'), (snapshot) => {
+      setTodasReservas(snapshot.val() ? Object.values(snapshot.val()) : []);
     });
+
+    return () => { unsubSedes(); unsubDocentes(); unsubAuditoria(); unsubReservas(); };
   }, []);
 
   // LÓGICA DE DETECCIÓN DE CAÍDA (WATCHDOG LOCAL)
   useEffect(() => {
-    // Revisamos la salud del terminal cada 5 segundos localmente
     const interval = setInterval(() => {
       const horaActualUnix = Math.floor(Date.now() / 1000);
-      
-      // Si el último ping fue hace más de 90 segundos, declaramos la caída
-      if (ultimoPing !== 0 && (horaActualUnix - ultimoPing > 90)) {
-        setTerminalOffline(true);
-      } else {
-        setTerminalOffline(false);
-      }
+      setTerminalOffline(ultimoPing !== 0 && (horaActualUnix - ultimoPing > 90));
     }, 5000);
-
     return () => clearInterval(interval);
   }, [ultimoPing]);
 
+  // CONEXIÓN DIRECTA CON EL HARDWARE (Usando el id_terminal exacto)
   useEffect(() => {
-    let nodoFirebase = '';
-    if (labSeleccionado.includes('Cómputo')) nodoFirebase = 'LAB_COMPUTO';
-    if (labSeleccionado.includes('Electrónica')) nodoFirebase = 'LAB_ELECTRONICA';
-    if (labSeleccionado.includes('Química')) nodoFirebase = 'LAB_QUIMICA';
+    if (!labSeleccionadoId) return;
 
-    const unsubscribe = onValue(ref(db, `configuracion_laboratorios/${nodoFirebase}`), (snapshot) => {
+    // Ya no hacemos if/includes. Apuntamos directo a la llave exacta del hardware
+    const unsubscribe = onValue(ref(db, `configuracion_laboratorios/${labSeleccionadoId}`), (snapshot) => {
       const val = snapshot.val();
       if (val) {
         setPestilloAbierto(val.estado_puerta === 'ABIERTA');
@@ -83,55 +105,41 @@ export default function Dashboard() {
         setPestilloAbierto(false);
         setOcupacion(0);
         setHardResetStatus(false);
+        setUltimoPing(0);
       }
     });
 
     return () => unsubscribe();
-  }, [labSeleccionado]);
+  }, [labSeleccionadoId]);
 
   const ejecutarReset = () => {
-    let nodoFirebase = '';
-    if (labSeleccionado.includes('Cómputo')) nodoFirebase = 'LAB_COMPUTO';
-    if (labSeleccionado.includes('Electrónica')) nodoFirebase = 'LAB_ELECTRONICA';
-    if (labSeleccionado.includes('Química')) nodoFirebase = 'LAB_QUIMICA';
-
-    update(ref(db, `configuracion_laboratorios/${nodoFirebase}`), {
+    if (!labSeleccionadoId) return;
+    update(ref(db, `configuracion_laboratorios/${labSeleccionadoId}`), {
       hard_reset: true
-    }).then(() => {
-      setMostrarModalReset(false);
-    }).catch((error) => {
-      console.error("Error al actualizar hard_reset:", error);
-    });
+    }).then(() => setMostrarModalReset(false)).catch(console.error);
   };
 
-  const coincideLab = (labDB) => {
-    const dbString = labDB.toUpperCase();
-    
-    if (labSeleccionado.includes('Cómputo') && (dbString.includes('CÓMPUTO') || dbString.includes('COMPUTO'))) return true;
-    if (labSeleccionado.includes('Electrónica') && (dbString.includes('ELECTRÓNICA') || dbString.includes('ELECTRONICA'))) return true;
-    if (labSeleccionado.includes('Química') && (dbString.includes('QUÍMICA') || dbString.includes('QUIMICA'))) return true;
-    return false;
-  };
-
-  const auditoriaFiltrada = todasAuditorias.filter(log => coincideLab(log.id_terminal));
-
-  const alertasSeguridad = auditoriaFiltrada.filter(log => 
-    log.evento === 'ACCESO_DENEGADO' || log.evento === 'PUERTA_ABANDONADA'
-  ).length;
-
+  // FILTRADO ULTRA RÁPIDO (Ya no usa strings parciales, usa el ID exacto)
+  const auditoriaFiltrada = todasAuditorias.filter(log => log.id_terminal === labSeleccionadoId);
+  const alertasSeguridad = auditoriaFiltrada.filter(log => log.evento === 'ACCESO_DENEGADO' || log.evento === 'PUERTA_ABANDONADA').length;
+  
   const reservasPendientes = todasReservas.filter(res => {
+    // Asumiendo que ahora las reservas de la app también traen el id_terminal o puedes buscar por nombre exacto
     const esPendiente = res.estado && res.estado.toLowerCase() === 'pendiente';
-    return esPendiente && coincideLab(res.laboratorio);
+    return esPendiente && res.laboratorio === nombreLabVisual; 
   }).length;
+
 
   const obtenerPropietario = (uidCard) => {
     if (!uidCard) return 'Desconocido';
     if (uidCard === 'SISTEMA') return 'Monitor de Hardware';
     if (uidCard === 'BOTON_INTERIOR') return 'Pulsador de Salida (REX)';
     
+    // Buscar en la lista de docentes
     const encontrado = docentes.find(d => 
       d.uid && d.uid.replace(/\s+/g, '').toUpperCase() === uidCard.replace(/\s+/g, '').toUpperCase()
     );
+    
     return encontrado ? encontrado.nombre : '⚠️ Credencial No Registrada';
   };
 
@@ -195,20 +203,29 @@ export default function Dashboard() {
           <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm font-medium">Monitoreo de accesos, aforo y sincronización móvil en tiempo real.</p>
         </div>
 
-        {/* SELECTOR DE LABORATORIO PREMIUM */}
+        {/* SELECTOR DE LABORATORIO DINÁMICO */}
         <div className="flex items-center gap-2.5 bg-white dark:bg-[#111827] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm transition-all w-full md:w-auto">
           <label className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Supervisar:</label>
           <div className="flex items-center gap-1.5 relative w-full">
             <select 
               className="bg-transparent text-slate-800 dark:text-white border-0 outline-none cursor-pointer font-bold text-xs pr-6 appearance-none focus:ring-0 w-full"
-              value={labSeleccionado}
-              onChange={(e) => setLabSeleccionado(e.target.value)}
+              value={labSeleccionadoId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setLabSeleccionadoId(id);
+                const labObj = laboratoriosPermitidos.find(l => l.id === id);
+                if (labObj) setNombreLabVisual(labObj.nombre);
+              }}
             >
-              {laboratorios.map(lab => (
-                <option key={lab} value={lab} className="bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-200 font-semibold text-xs">
-                  {lab}
-                </option>
-              ))}
+              {laboratoriosPermitidos.length === 0 ? (
+                <option value="">Cargando accesos...</option>
+              ) : (
+                laboratoriosPermitidos.map(lab => (
+                  <option key={lab.id} value={lab.id} className="bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-200 font-semibold text-xs">
+                    {lab.nombre}
+                  </option>
+                ))
+              )}
             </select>
             <svg className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 absolute right-0 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"></path></svg>
           </div>
@@ -337,7 +354,7 @@ export default function Dashboard() {
           <h2 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
             <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" /></svg>
             Historial de Auditoría en Tiempo Real
-            <span className="text-xs font-medium text-slate-400 dark:text-slate-500 normal-case ml-1">({labSeleccionado.split(' ')[1] || labSeleccionado})</span>
+            <span className="text-xs font-medium text-slate-400 dark:text-slate-500 normal-case ml-1">({labSeleccionadoId.split(' ')[1] || labSeleccionadoId})</span>
           </h2>
         </div>
 

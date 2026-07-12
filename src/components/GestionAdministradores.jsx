@@ -8,36 +8,47 @@ export default function GestionAdministradores() {
   const [admins, setAdmins] = useState([]);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [toast, setToast] = useState(null);
+  const [sedesBD, setSedesBD] = useState({});
 
-  // Estados del Formulario
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
-  const [authUid, setAuthUid] = useState(''); // El UID copiado de la consola
+  const [authUid, setAuthUid] = useState('');
   const [uidTarjeta, setUidTarjeta] = useState('');
   const [pinPlano, setPinPlano] = useState('');
   const [rol, setRol] = useState('ADMIN_SEDE');
-  const [sede, setSede] = useState('LAB_COMPUTO'); // O 'TODAS'
+  const [sede, setSede] = useState('TODAS'); // Default a TODAS
 
   useEffect(() => {
-    // Escuchar el nodo paralelo de administradores
-    const unsub = onValue(ref(db, 'administradores'), (snapshot) => {
+    // 1. Escuchar Administradores
+    const unsubAdmins = onValue(ref(db, 'administradores'), (snapshot) => {
       const data = snapshot.val();
-      const list = data ? Object.entries(data).map(([key, value]) => ({ id: key, ...value })) : [];
-      setAdmins(list);
+      setAdmins(data ? Object.entries(data).map(([key, value]) => ({ id: key, ...value })) : []);
     });
-    return () => unsub();
+
+    // 2. Escuchar la Estructura de Sedes
+    const unsubSedes = onValue(ref(db, 'sedes'), (snapshot) => {
+      if (snapshot.exists()) setSedesBD(snapshot.val());
+    });
+
+    return () => { unsubAdmins(); unsubSedes(); };
   }, []);
 
-  const lanzarToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
-  };
-
+  // LÓGICA DINÁMICA DE EXTRACCIÓN DE TERMINALES
   const generarHorarioInfinito = (sedeSeleccionada) => {
     const dias = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-    const terminales = sedeSeleccionada === "TODAS" 
-      ? ["LAB_COMPUTO", "LAB_ELECTRONICA", "LAB_QUIMICA"] 
-      : [sedeSeleccionada]; 
+    let terminales = [];
+
+    if (sedeSeleccionada === "TODAS") {
+      // El Super-Admin obtiene TODOS los laboratorios de TODAS las sedes
+      Object.values(sedesBD).forEach(sedeObj => {
+        if (sedeObj.laboratorios) {
+          terminales = [...terminales, ...Object.keys(sedeObj.laboratorios)];
+        }
+      });
+    } else if (sedesBD[sedeSeleccionada] && sedesBD[sedeSeleccionada].laboratorios) {
+      // El Admin Local obtiene solo los laboratorios de su Sede específica
+      terminales = Object.keys(sedesBD[sedeSeleccionada].laboratorios);
+    }
 
     const horarios = [];
     dias.forEach(dia => {
@@ -175,10 +186,14 @@ export default function GestionAdministradores() {
               <div>
                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Apertura 24/7 Permitida en:</label>
                  <select value={sede} onChange={e => setSede(e.target.value)} className="w-full mt-1.5 bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white outline-none cursor-pointer font-bold">
-                    <option value="TODAS">🔥 ACCESO A TODAS LAS PUERTAS (Maestra)</option>
-                    <option value="LAB_COMPUTO">Solo Lab. Cómputo</option>
-                    <option value="LAB_ELECTRONICA">Solo Lab. Electrónica</option>
-                    <option value="LAB_QUIMICA">Solo Lab. Química</option>
+                    <option value="TODAS">🔥 ACCESO A TODAS LAS PUERTAS (Super-Admin)</option>
+                    
+                    {/* Renderizado dinámico desde Firebase */}
+                    {Object.entries(sedesBD).map(([keySede, datosSede]) => (
+                      <option key={keySede} value={keySede}>
+                        {datosSede.nombre} ({Object.keys(datosSede.laboratorios || {}).length} Labs)
+                      </option>
+                    ))}
                  </select>
               </div>
 
