@@ -255,7 +255,7 @@ export default function Dashboard() {
             <div>
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Alertas de Seguridad</p>
               <h3 className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">
-                {alertasSeguridad} <span className="text-xs font-bold text-slate-400 dark:text-slate-500 lowercase">hoy</span>
+                {alertasSeguridad} <span className="text-xs font-bold text-slate-400 dark:text-slate-500 lowercase"></span>
               </h3>
             </div>
             <div className={`p-2.5 rounded-lg border ${alertasSeguridad > 0 ? 'bg-amber-50 border-amber-100 text-amber-600 dark:bg-amber-500/10 dark:border-amber-500/20 dark:text-amber-400' : 'bg-slate-50 border-slate-100 text-slate-500 dark:bg-[#1E293B] dark:border-slate-700 dark:text-slate-400'}`}>
