@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase'; 
+import { db, auth } from '../firebase'; 
+import { registrarAuditoriaWeb } from '../utils/auditLogger'; //nuevo: función de auditloger.js
 import { ref, onValue, set, remove } from 'firebase/database';
 
 const generarUID = () => {
@@ -183,6 +184,12 @@ export default function GestionUsuarios() {
         horarios: docenteData.horarios // El ESP32 mapeará este array directamente
       });
 
+      await registrarAuditoriaWeb(
+        auth.currentUser,
+        docenteEnEdicion ? "EDITO_DOCENTE" : "NUEVO_DOCENTE",
+        `${docenteEnEdicion ? 'Editó' : 'Registró'} al docente ${nombre} con tarjeta ${uid}`
+      );
+      
       lanzarToast(docenteEnEdicion ? '¡Editado correctamente! ✏️' : '¡Usuario creado! ⚡');
       limpiarFormulario();
     } catch (e) {
@@ -202,6 +209,12 @@ export default function GestionUsuarios() {
     try {
       await set(ref(db, `docentes/${docente.id}/estado`), nuevoEstado);
       await set(ref(db, `laboratorio/usuarios/${docente.id}/habilitado`), nuevoEstado === 'Habilitado');
+      await registrarAuditoriaWeb(
+        auth.currentUser,
+        "CAMBIO_ESTADO",
+        `Cambió el estado de red de ${docente.nombre} a ${nuevoEstado}`
+      );  
+
       lanzarToast(`Estado actualizado a: ${nuevoEstado} 🔄`);
     } catch (error) {
       console.error("Error al cambiar estado:", error);
@@ -214,6 +227,16 @@ export default function GestionUsuarios() {
       try {
         await set(ref(db, `docentes/${idParaEliminar}/estado`), 'Inhabilitado');
         await set(ref(db, `laboratorio/usuarios/${idParaEliminar}/habilitado`), false);
+
+        const docenteEliminado = docentes.find(d => d.id === idParaEliminar);
+        const nombreDocente = docenteEliminado ? docenteEliminado.nombre : "Docente desconocido";
+
+        await registrarAuditoriaWeb(
+          auth.currentUser,
+          "INHABILITO_TARJETA",
+          `Revocó permanentemente la credencial y accesos de ${nombreDocente}`
+        );  
+        
         lanzarToast('🚫 Credencial inhabilitada (Registro conservado)');
         setIdParaEliminar(null);
       } catch (error) {

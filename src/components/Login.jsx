@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth'; 
-import { auth } from '../firebase'; 
+import { auth, db } from '../firebase'; // <-- Agregamos db
+import { ref, get } from 'firebase/database'; // <-- Agregamos ref y get
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -9,31 +10,47 @@ export default function Login() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  // =========================================================
-  // TU LÓGICA DE AUTENTICACIÓN Y SEGURIDAD INTACTA
-  // =========================================================
   const handleLogin = async (e) => {
     e.preventDefault();
     setError(''); 
     
     try {
+      // 1. Autenticación en Firebase (Verifica si el correo y clave son correctos)
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      const adminEmail = "admin@universidad.edu.pe"; 
+      // 2. Autorización (RBAC): Consultamos si este usuario existe en el nodo de administradores
+      const adminRef = ref(db, `administradores/${user.uid}`);
+      const snapshot = await get(adminRef);
 
-      if (user.email.toLowerCase() !== adminEmail.toLowerCase()) {
+      if (snapshot.exists()) {
+        const perfil = snapshot.val();
+
+        // 3. Verificar si el Super-Admin no lo ha inhabilitado
+        if (perfil.estado !== 'ACTIVO') {
+          await signOut(auth);
+          setError('Tu cuenta administrativa ha sido desactivada. Contacta a soporte.');
+          return;
+        }
+
+        console.log("¡Logueado con éxito!", perfil.nombre, "| Rol:", perfil.rol);
+        
+        // 4. Guardamos el rol en el almacenamiento local del navegador para usarlo en la interfaz
+        localStorage.setItem('adminRol', perfil.rol); 
+        localStorage.setItem('adminSede', perfil.sede);
+        
+        navigate('/dashboard');
+        
+      } else {
+        // Si no existe en el nodo 'administradores', significa que es un Docente intentando 
+        // entrar al panel web con la cuenta de su App Móvil. ¡Lo bloqueamos!
         await signOut(auth); 
-        setError('Acceso Denegado: Este panel es exclusivo para administradores.');
-        return;
+        setError('Acceso Denegado: Este panel web es exclusivo para personal administrativo.');
       }
 
-      console.log("¡Logueado con éxito!", user.email);
-      navigate('/dashboard');
-      
     } catch (error) {
       console.error("Error al iniciar sesión:", error.message);
-      setError('Credenciales incorrectas. Intenta de nuevo.');
+      setError('Credenciales incorrectas o usuario no registrado. Intenta de nuevo.');
     }
   };
   // =========================================================

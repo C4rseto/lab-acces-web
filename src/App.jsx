@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, Link} from 'react-router-dom';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import GestionUsuarios from './components/GestionUsuarios';
 import Prestamos from './components/Prestamos';
 import Cronograma from './components/Cronograma';
 import Reportes from './components/Reportes';
+import GestionAdministradores from './components/GestionAdministradores';
 
 // Componente principal: El "Cascarón" con la barra a la izquierda
 function AdminLayout({ children, esOscuro, setEsOscuro }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const rolUsuario = localStorage.getItem('adminRol');
 
   // ESTILOS SOBRIOS Y PROFESIONALES (Actualizados para encajar con el nuevo tono oscuro)
   const isActive = (path) => location.pathname === path 
@@ -60,6 +62,10 @@ function AdminLayout({ children, esOscuro, setEsOscuro }) {
               <button onClick={() => navigate('/reportes')} className={isActive('/reportes')}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 Reportes / Auditoría
+              </button>
+              <button onClick={() => navigate('/gestion-admins')} className={isActive('/gestion-admins')}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3a5 5 0 00-5 5v1.28A2 2 0 005 11.2V13a1 1 0 001 1h12a1 1 0 001-1v-1.8a2 2 0 00-2-1.92V8a5 5 0 00-5-5zm-3 6V8a3 3 0 116 0v1H9zm-2 4h10" /></svg>
+                Gestión de Administradores
               </button>
             </nav>
           </div>
@@ -142,6 +148,7 @@ export default function App() {
         <Route path="/prestamos" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Prestamos /></AdminLayout>} />
         <Route path="/cronograma" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Cronograma /></AdminLayout>} />
         <Route path="/reportes" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Reportes /></AdminLayout>} />
+        <Route path="/gestion-admins" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><GestionAdministradores /></AdminLayout>} />
       </Routes>
     </BrowserRouter>
   );

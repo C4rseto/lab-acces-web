@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
+import { registrarAuditoriaWeb } from '../utils/auditLogger'; //nuevo: función de auditloger.js
 import { ref, onValue, set } from 'firebase/database'; 
 
 export default function Prestamos() {
@@ -129,6 +130,12 @@ export default function Prestamos() {
       await set(ref(db, `reservas/${seleccionada.id}/estado`), nuevoEstado);
       await set(ref(db, `reservas/${seleccionada.id}/respuestaAdmin`), respuestaAdmin || (aprobada ? 'Aprobado sin comentarios.' : 'Solicitud denegada.'));
       
+      await registrarAuditoriaWeb(
+        auth.currentUser,
+        aprobada ? "APROBO_RESERVA" : "RECHAZO_RESERVA",
+        `${aprobada ? 'Aprobó' : 'Rechazó'} la reserva de ${seleccionada.estudiante} en ${seleccionada.laboratorio}`
+      );
+
       setSeleccionada(null);
       setRespuestaAdmin('');
     }
