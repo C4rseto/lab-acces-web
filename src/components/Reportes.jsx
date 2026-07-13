@@ -20,39 +20,46 @@ export default function Reportes() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
 
-  const laboratoriosDisponibles = ['Todos', 'Lab. Cómputo', 'Lab. Electrónica', 'Lab. Química'];
+  const [laboratoriosDisponibles, setLaboratoriosDisponibles] = useState(['Todos']);
   const estadosReservas = ['Todos', 'aprobado', 'denegado'];
   const eventosAccesos = ['Todos', 'ACCESO_CONCEDIDO', 'ACCESO_DENEGADO', 'PUERTA_ABANDONADA'];
 
   useEffect(() => {
-    // 1. Cargar Reservas Pasadas
-    onValue(ref(db, 'reservas'), (snapshot) => {
+    const rolAdmin = localStorage.getItem('adminRol');
+    const sedeAdmin = localStorage.getItem('adminSede');
+
+    // Carga de Sedes (RBAC)
+    onValue(ref(db, 'sedes'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        setHistorialReservas(lista.filter(r => r.estado !== 'pendiente').reverse());
-      } else {
-        setHistorialReservas([]);
+        let labs = ['Todos'];
+        if (rolAdmin === 'SUPER_ADMIN' || sedeAdmin === 'TODAS') {
+          Object.values(data).forEach(sedeObj => {
+            if(sedeObj.laboratorios) Object.values(sedeObj.laboratorios).forEach(v => labs.push(v));
+          });
+        } else if (data[sedeAdmin] && data[sedeAdmin].laboratorios) {
+          Object.values(data[sedeAdmin].laboratorios).forEach(v => labs.push(v));
+        }
+        setLaboratoriosDisponibles([...new Set(labs)]); // Evita duplicados
       }
     });
 
-    // 2. Cargar Accesos Físicos (Puerta IoT)
+    onValue(ref(db, 'reservas'), (snapshot) => {
+      const data = snapshot.val();
+      setHistorialReservas(data ? Object.keys(data).map(key => ({ id: key, ...data[key] })).filter(r => r.estado !== 'pendiente').reverse() : []);
+    });
+
     onValue(ref(db, 'laboratorio/auditoria'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const logs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        logs.sort((a, b) => b.hora.localeCompare(a.hora));
+        const logs = Object.keys(data).map(key => ({ id: key, ...data[key] })).sort((a, b) => b.hora.localeCompare(a.hora));
         setHistorialAccesos(logs);
       } else {
         setHistorialAccesos([]);
       }
     });
 
-    // 3. Cargar Docentes
-    onValue(ref(db, 'docentes'), (snapshot) => {
-      const data = snapshot.val();
-      setDocentes(data ? Object.values(data) : []);
-    });
+    onValue(ref(db, 'docentes'), (snapshot) => setDocentes(snapshot.val() ? Object.values(snapshot.val()) : []));
   }, []);
 
   const obtenerPropietario = (uidCard) => {
