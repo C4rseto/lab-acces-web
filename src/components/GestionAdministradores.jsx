@@ -209,9 +209,6 @@ export default function GestionAdministradores() {
               </div>
 
               <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 p-4 rounded-xl mt-4">
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                  Al guardar, el sistema encriptará el PIN en SHA-256 e inyectará los permisos físicos en la cerradura mediante un <strong>Atomic Update</strong>.
-                </p>
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 mt-4 rounded-xl shadow-md transition-all text-sm flex justify-center gap-2 items-center cursor-pointer">
                   INCLUIR ADMINISTRADOR Y SINCRONIZAR
                 </button>
