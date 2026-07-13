@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { db } from '../firebase';
-import { ref, onValue, update} from 'firebase/database';
+import { ref, onValue, update, get} from 'firebase/database';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -112,6 +112,66 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [labSeleccionadoId]);
 
+  // 🧹 RECOLECTOR DE BASURA IOT (GHOST ACCESS CLEANER)
+  useEffect(() => {
+    const ejecutarMantenimientoIoT = async () => {
+      const snapReservas = await get(ref(db, 'reservas'));
+      
+      if (snapReservas.exists()) {
+        const dataReservas = snapReservas.val();
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0); // Congelamos la hora a medianoche
+        
+        let updates = {};
+        let hayBasura = false;
+        
+        // Descargamos TODOS los usuarios de hardware de golpe para no saturar Firebase
+        const snapUsuarios = await get(ref(db, 'laboratorio/usuarios'));
+        let usuariosIoT = snapUsuarios.exists() ? snapUsuarios.val() : {};
+        
+        // 1. Buscamos reservas aprobadas pero que ya pasaron de fecha
+        for (const [idReserva, res] of Object.entries(dataReservas)) {
+          if (res.estado === 'aprobado') {
+            const partesF = res.fecha.split('/');
+            if (partesF.length === 3) {
+              const fechaRes = new Date(partesF[2], partesF[1] - 1, partesF[0]);
+              
+              if (fechaRes < hoy) {
+                 hayBasura = true;
+                 // Lo marcamos como finalizado en la app
+                 updates[`reservas/${idReserva}/estado`] = 'finalizado'; 
+                 
+                 // 2. Escaneamos a TODOS los usuarios (Docentes y Admins) para borrar el acceso fantasma
+                 for (const [keyUsuarioIoT, datosUsuario] of Object.entries(usuariosIoT)) {
+                   if (datosUsuario.horarios) {
+                     // Filtramos dejando fuera la reserva vencida
+                     const horariosLimpios = datosUsuario.horarios.filter(h => h.id_reserva !== idReserva);
+                     
+                     // Si el tamaño cambió, significa que este era el usuario que tenía la reserva
+                     if (horariosLimpios.length !== datosUsuario.horarios.length) {
+                       // Actualizamos en Firebase usando su llave real (UUID o UID)
+                       updates[`laboratorio/usuarios/${keyUsuarioIoT}/horarios`] = horariosLimpios;
+                       // Actualizamos en memoria por si este mismo usuario tiene OTRA reserva vieja
+                       usuariosIoT[keyUsuarioIoT].horarios = horariosLimpios; 
+                     }
+                   }
+                 }
+              }
+            }
+          }
+        }
+        
+        // Si encontramos basura, disparamos una sola escritura masiva atómica
+        if (hayBasura) {
+           await update(ref(db), updates);
+           console.log("🛡️ Mantenimiento IoT: Accesos fantasmas eliminados exitosamente.");
+        }
+      }
+    };
+    
+    ejecutarMantenimientoIoT();
+  }, []);
+
   const ejecutarReset = () => {
     if (!labSeleccionadoId) return;
     update(ref(db, `configuracion_laboratorios/${labSeleccionadoId}`), {
@@ -119,8 +179,32 @@ export default function Dashboard() {
     }).then(() => setMostrarModalReset(false)).catch(console.error);
   };
 
+  
   // FILTRADO ULTRA RÁPIDO (Ya no usa strings parciales, usa el ID exacto)
-  const auditoriaFiltrada = todasAuditorias.filter(log => log.id_terminal === labSeleccionadoId);
+  const hace24Horas = Date.now() - (24 * 60 * 60 * 1000);
+
+    const auditoriaFiltrada = todasAuditorias.filter(log => {
+      // 1. Filtro por el laboratorio seleccionado en el combobox
+      if (log.id_terminal !== labSeleccionadoId) return false;
+      
+      // 2. Filtro estricto de 24 horas
+      if (!log.hora) return false;
+      try {
+        const [fechaPart, horaPart] = log.hora.split(' ');
+        let logDate;
+        // Soporte dual para fechas del hardware (guiones) y de la web (barras)
+        if (fechaPart.includes('-')) {
+          const [y, m, d] = fechaPart.split('-');
+          logDate = new Date(`${y}-${m}-${d}T${horaPart}`);
+        } else {
+          const [d, m, y] = fechaPart.split('/');
+          logDate = new Date(`${y}-${m}-${d}T${horaPart}`);
+        }
+        return logDate.getTime() >= hace24Horas;
+      } catch(e) {
+        return false; 
+      }
+    });
   const alertasSeguridad = auditoriaFiltrada.filter(log => log.evento === 'ACCESO_DENEGADO' || log.evento === 'PUERTA_ABANDONADA').length;
   
   // Limpiador universal de emojis y caracteres especiales

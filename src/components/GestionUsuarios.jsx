@@ -186,6 +186,7 @@ export default function GestionUsuarios() {
       correo,
       uid: uid.toUpperCase(),
       pin: pinExistente, 
+      laboratorio: laboratorio,
       horarios: horariosEdicion, // Array con encapsulación individual de laboratorios
       estado: docenteEnEdicion ? docentes.find(d => d.id === idUnico)?.estado || 'Habilitado' : 'Habilitado'
     };
@@ -245,6 +246,9 @@ export default function GestionUsuarios() {
       try {
         await set(ref(db, `docentes/${idParaEliminar}/estado`), 'Inhabilitado');
         await set(ref(db, `laboratorio/usuarios/${idParaEliminar}/habilitado`), false);
+
+        await set(ref(db, `docentes/${idParaEliminar}/horarios`), null);
+        await set(ref(db, `laboratorio/usuarios/${idParaEliminar}/horarios`), null);
 
         const docenteEliminado = docentes.find(d => d.id === idParaEliminar);
         const nombreDocente = docenteEliminado ? docenteEliminado.nombre : "Docente desconocido";

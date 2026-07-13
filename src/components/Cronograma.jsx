@@ -65,6 +65,49 @@ export default function Cronograma() {
     onValue(ref(db, 'reservas'), snapshot => setSolicitudes(snapshot.val() ? Object.values(snapshot.val()) : []));
   }, []);
 
+  // EVALUADOR DE VIGENCIA: Devuelve true si la fecha de la reserva ya pasó
+  const esReservaVencida = (fechaStr) => {
+    if (!fechaStr) return true;
+    const partes = fechaStr.split('/');
+    if (partes.length !== 3) return false;
+    
+    // Asume formato DD/MM/YYYY
+    const fechaReserva = new Date(partes[2], partes[1] - 1, partes[0]);
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); // Reseteamos la hora a medianoche para comparar solo los días limpios
+    
+    return fechaReserva < hoy;
+  };
+
+  const esReservaVigenteEstaSemana = (fechaStr) => {
+    if (!fechaStr) return false;
+    const partes = fechaStr.split('/');
+    if (partes.length !== 3) return false;
+
+    const fechaReserva = new Date(partes[2], partes[1] - 1, partes[0]);
+    fechaReserva.setHours(0, 0, 0, 0);
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    // REGLA 1: Si es de ayer hacia atrás, NO SE MUESTRA visualmente
+    if (fechaReserva < hoy) return false;
+
+    // REGLA 2: Límite estricto hasta el Sábado de la semana actual
+    const diaSemanaActual = hoy.getDay(); // 0 es Domingo, 1 es Lunes... 6 es Sábado
+    
+    // Calculamos la distancia al Sábado (Si hoy es Lunes (1), faltan 5 días para el Sábado (6))
+    // Si hoy es Domingo (0), automáticamente saltará al Sábado de la semana entrante (+6 días)
+    const diasParaSabado = 6 - diaSemanaActual; 
+    
+    const sabado = new Date(hoy);
+    sabado.setDate(hoy.getDate() + diasParaSabado);
+    sabado.setHours(23, 59, 59, 999);
+
+    // Si la reserva es para el domingo o la próxima semana, queda oculta hasta el próximo ciclo
+    return fechaReserva <= sabado; 
+  };
+
   const cronogramaPorDia = () => {
     const mapa = { Lunes: [], Martes: [], Miércoles: [], Jueves: [], Viernes: [], Sábado: [] };
     const nombresUnicos = Array.from(new Set(docentes.map(d => d.nombre)));
@@ -114,9 +157,10 @@ export default function Cronograma() {
     };
 
     solicitudes.forEach(sol => {
+      if (!esReservaVigenteEstaSemana(sol.fecha)) return; 
+
       const diaConvertido = obtenerDiaSemana(sol.fecha);
       
-      // Lógica de coincidencia robusta para reservas vs. el filtro actual
       let coincideReserva = false;
       if (filtroLab === 'Todos') {
         coincideReserva = true;
@@ -134,7 +178,10 @@ export default function Cronograma() {
         }
       }
 
-      if (sol.estado === 'aprobado' && diaConvertido && mapa[diaConvertido] && coincideReserva) {
+      // Soportamos 'aprobado' y también 'finalizado' por si acaso alguna quedó en el límite
+      const estadoValido = sol.estado === 'aprobado' || sol.estado === 'finalizado';
+
+      if (estadoValido && diaConvertido && mapa[diaConvertido] && coincideReserva) {
         mapa[diaConvertido].push({ 
           tipo: 'Reserva Especial', titulo: sol.estudiante, lab: sol.laboratorio, 
           inicio: sol.horaInicio, fin: sol.horaFin, fechaExacta: sol.fecha,

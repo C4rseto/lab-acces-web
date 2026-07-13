@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { registrarAuditoriaWeb } from '../utils/auditLogger'; //nuevo: función de auditloger.js
-import { ref, onValue, set } from 'firebase/database'; 
+import { ref, onValue, set, update, get} from 'firebase/database'; 
 
 export default function Prestamos() {
   const [pendientes, setPendientes] = useState([]);
@@ -99,6 +99,18 @@ export default function Prestamos() {
       return;
     }
 
+    const partesF = seleccionada.fecha.split('/');
+    if (partesF.length === 3) {
+      const fechaResReq = new Date(partesF[2], partesF[1] - 1, partesF[0]);
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      
+      if (fechaResReq < hoy) {
+        setConflicto("Esta solicitud pertenece a una fecha pasada. No es posible otorgar accesos físicos de manera retroactiva.");
+        return; // Salimos de la función y bloqueamos el botón "Aprobar" instantáneamente
+      }
+    }
+
     const nuevoInicioMin = convertirAMinutos(seleccionada.horaInicio);
     const nuevoFinMin = convertirAMinutos(seleccionada.horaFin);
     const diaSemanaSolicitado = obtenerDiaSemana(seleccionada.fecha);
@@ -153,20 +165,76 @@ export default function Prestamos() {
   // =========================================================
   const procesar = async (aprobada) => {
     if (seleccionada) {
-      // Seguro anti-hackeos: Si el botón está deshabilitado y lograron darle click
       if (aprobada && conflicto) {
         alert(`⚠️ No se puede aprobar: ${conflicto}`);
         return;
       }
 
       const nuevoEstado = aprobada ? 'aprobado' : 'denegado';
-      await set(ref(db, `reservas/${seleccionada.id}/estado`), nuevoEstado);
-      await set(ref(db, `reservas/${seleccionada.id}/respuestaAdmin`), respuestaAdmin || (aprobada ? 'Aprobado sin comentarios.' : 'Solicitud denegada.'));
+      const updates = {};
+      
+      // 1. Actualización en el panel web (La app móvil lee esto)
+      updates[`reservas/${seleccionada.id}/estado`] = nuevoEstado;
+      updates[`reservas/${seleccionada.id}/respuestaAdmin`] = respuestaAdmin || (aprobada ? 'Aprobado sin comentarios.' : 'Solicitud denegada.');
+
+      // 2. INYECCIÓN AL HARDWARE (IoT) - Búsqueda estricta por UID de Tarjeta
+      if (aprobada) {
+        // Encontramos el perfil del docente para obtener su UID de tarjeta
+        const docenteEncontrado = docentes.find(d => d.nombre === seleccionada.estudiante);
+        const uidTarjeta = docenteEncontrado ? docenteEncontrado.uid : null;
+
+        if (uidTarjeta) {
+          // Mapeo seguro del terminal para el hardware
+          const labStr = seleccionada.laboratorio.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+          let idTerminal = 'LAB_COMPUTO';
+          if (labStr.includes('ELECTRONIC')) idTerminal = 'LAB_ELECTRONICA';
+          if (labStr.includes('QUIMIC')) idTerminal = 'LAB_QUIMICA';
+
+          const bloqueExtra = {
+            dia: obtenerDiaSemana(seleccionada.fecha),
+            inicio: seleccionada.horaInicio,
+            fin: seleccionada.horaFin,
+            id_terminal: idTerminal,
+            laboratorio_texto: seleccionada.laboratorio,
+            id_reserva: seleccionada.id, // Marca de agua para el Recolector de Basura
+            es_extraordinaria: true
+          };
+
+          // BÚSQUEDA INTELIGENTE: Recorremos el nodo IoT para encontrar la llave exacta que tiene este UID
+          const snapUsuarios = await get(ref(db, 'laboratorio/usuarios'));
+          if (snapUsuarios.exists()) {
+            let keyUsuarioIoT = null;
+            let horariosActuales = [];
+            
+            snapUsuarios.forEach((childSnap) => {
+              const datos = childSnap.val();
+              // A nivel de hardware solo nos importa que el UID coincida
+              if (datos.uid === uidTarjeta) {
+                keyUsuarioIoT = childSnap.key;
+                horariosActuales = datos.horarios || [];
+              }
+            });
+
+            if (keyUsuarioIoT) {
+              // Inyectamos el horario en la ruta exacta que el ESP32 está escuchando
+              horariosActuales.push(bloqueExtra);
+              updates[`laboratorio/usuarios/${keyUsuarioIoT}/horarios`] = horariosActuales;
+            } else {
+              alert("⚠️ Se encontró al docente, pero no tiene un perfil de hardware sincronizado. La puerta no se abrirá.");
+            }
+          }
+        } else {
+          alert("⚠️ El Docente no tiene una tarjeta RFID registrada. La puerta no se abrirá automáticamente.");
+        }
+      }
+
+      // Ejecutamos todos los cambios atómicamente
+      await update(ref(db), updates);
       
       await registrarAuditoriaWeb(
         auth.currentUser,
         aprobada ? "APROBO_RESERVA" : "RECHAZO_RESERVA",
-        `${aprobada ? 'Aprobó' : 'Rechazó'} la reserva de ${seleccionada.estudiante} en ${seleccionada.laboratorio}`
+        `${aprobada ? 'Aprobó' : 'Rechazó'} la reserva del docente ${seleccionada.estudiante} en ${seleccionada.laboratorio}`
       );
 
       setSeleccionada(null);
