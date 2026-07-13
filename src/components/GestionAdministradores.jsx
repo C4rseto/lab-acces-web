@@ -146,6 +146,43 @@ export default function GestionAdministradores() {
     }
   };
 
+  const alternarEstadoAdmin = async (admin) => {
+    // ⚠️ SEGURO ANTI-BLOQUEO: Evita que te auto-inhabilites
+    if (admin.id === auth.currentUser?.uid) {
+      return lanzarToast('⚠️ No puedes suspender tu propia sesión activa.');
+    }
+
+    const nuevoEstado = admin.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
+    const hardwareHabilitado = nuevoEstado === 'ACTIVO';
+
+    try {
+      const atomicUpdates = {};
+      
+      // 1. Bloqueamos/Desbloqueamos su acceso al Panel Web
+      atomicUpdates[`administradores/${admin.id}/estado`] = nuevoEstado;
+      
+      // 2. Bloqueamos/Desbloqueamos su Tarjeta RFID en el Hardware
+      if (admin.uid_tarjeta) {
+        atomicUpdates[`laboratorio/usuarios/${admin.uid_tarjeta}/habilitado`] = hardwareHabilitado;
+      }
+
+      // Ejecutamos la inhabilitación dual
+      await update(ref(db), atomicUpdates);
+
+      // 3. Dejamos el log inmutable en la auditoría
+      await registrarAuditoriaWeb(
+        auth.currentUser,
+        nuevoEstado === 'ACTIVO' ? "REHABILITO_ADMIN" : "INHABILITO_ADMIN",
+        `Cambió el estado del administrador ${admin.nombre} a ${nuevoEstado}`
+      );
+
+      lanzarToast(`Administrador ${nuevoEstado === 'ACTIVO' ? 'rehabilitado' : 'suspendido'} correctamente.`);
+    } catch (error) {
+      console.error("Error al cambiar estado:", error);
+      lanzarToast('❌ Hubo un error de conexión.');
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in-up">
       {/* Sistema de Toast */}
@@ -254,6 +291,7 @@ export default function GestionAdministradores() {
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-[#111827]/30">
           <h2 className="text-sm font-bold text-slate-800 dark:text-white">Equipo de Administración</h2>
         </div>
+        <div className='overflow-x-auto [&::-webkit-scrollbar]:h-[4px] [&::-webkit-scrollbar-thumb]:bg-slate-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-track]:bg-transparent'>
         <table className="w-full text-left">
           <thead>
             <tr className="bg-slate-50 dark:bg-[#111827]/40 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
@@ -261,17 +299,19 @@ export default function GestionAdministradores() {
               <th className="p-4">Credencial RFID</th>
               <th className="p-4">Rol & Sede Asignada</th>
               <th className="p-4 text-center">Estado</th>
-              <th className="p-4">PIN</th>
+              <th className="p-4 text-center">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-sm text-slate-700 dark:text-slate-300">
             {admins.map(adm => (
-              <tr key={adm.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/20">
+              <tr key={adm.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors ${adm.estado !== 'ACTIVO' ? 'opacity-60 bg-slate-50/50 dark:bg-slate-900/40' : ''}`}>
                 <td className="p-4 pl-6">
-                  <div className="font-bold text-slate-800 dark:text-white">{adm.nombre}</div>
+                  <div className={`font-bold ${adm.estado !== 'ACTIVO' ? 'text-slate-500' : 'text-slate-800 dark:text-white'}`}>{adm.nombre}</div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">{adm.email}</div>
                 </td>
-                <td className="p-4 font-mono text-emerald-600 dark:text-emerald-400 font-bold text-xs">{adm.uid_tarjeta}</td>
+                <td className={`p-4 font-mono font-bold text-xs ${adm.estado !== 'ACTIVO' ? 'text-slate-400 line-through' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {adm.uid_tarjeta}
+                </td>
                 <td className="p-4">
                   <div className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded w-max mb-1 border ${adm.rol === 'SUPER_ADMIN' ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-500/20' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20'}`}>
                     {adm.rol}
@@ -279,23 +319,46 @@ export default function GestionAdministradores() {
                   <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{adm.sede}</div>
                 </td>
                 <td className="p-4 text-center">
-                  <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded border border-emerald-200 dark:border-emerald-500/20">
+                  <span className={`text-[10px] font-extrabold uppercase tracking-widest px-2 py-1 rounded border ${
+                    adm.estado === 'ACTIVO' 
+                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20' 
+                    : 'text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20'
+                  }`}>
                     {adm.estado}
                   </span>
                 </td>
-                <td>
+                <td className="p-4">
+                  <div className="flex justify-center items-center gap-2">
                     <button 
                       onClick={() => resetearPinAdministrador(adm.uid_tarjeta, adm.nombre)}
-                      className="ml-2 text-[10px] bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 px-2 py-1 rounded hover:bg-emerald-100 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                      disabled={adm.estado !== 'ACTIVO'}
+                      className={`text-[10px] px-2.5 py-1.5 rounded font-bold transition-colors cursor-pointer border ${
+                        adm.estado !== 'ACTIVO' 
+                        ? 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:border-slate-700 cursor-not-allowed' 
+                        : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100 dark:bg-[#0F172A] dark:text-slate-300 dark:border-slate-600 dark:hover:bg-slate-800'
+                      }`}
                       title="Asignar un nuevo PIN"
                     >
-                      Reset PIN
-                  </button>
+                      PIN
+                    </button>
+                    <button 
+                      onClick={() => alternarEstadoAdmin(adm)}
+                      className={`text-[10px] px-2.5 py-1.5 rounded font-bold transition-colors cursor-pointer border ${
+                        adm.estado === 'ACTIVO'
+                        ? 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50 dark:bg-[#0F172A] dark:text-rose-400 dark:border-rose-800 dark:hover:bg-rose-900/30'
+                        : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:bg-[#0F172A] dark:text-emerald-400 dark:border-emerald-800 dark:hover:bg-emerald-900/30'
+                      }`}
+                      title={adm.estado === 'ACTIVO' ? "Suspender accesos" : "Restaurar accesos"}
+                    >
+                      {adm.estado === 'ACTIVO' ? 'SUSPENDER' : 'ACTIVAR'}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

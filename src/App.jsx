@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Link} from 'react-router-dom';
+import { signOut } from 'firebase/auth';
+import { auth } from './firebase';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import GestionUsuarios from './components/GestionUsuarios';
@@ -82,7 +84,12 @@ function AdminLayout({ children, esOscuro, setEsOscuro }) {
         {/* Perfil Inferior */}
         <div className="p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161F30]">
           <button 
-            onClick={() => navigate('/')} 
+            onClick={async () =>{
+              await signOut(auth); // 1. Cierra sesión en Google/Firebase
+              localStorage.removeItem('adminRol'); // 2. Borra tu credencial del navegador
+              localStorage.removeItem('adminSede'); 
+              navigate('/'); // 3. Te manda al Login
+            }}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold text-sm transition-colors cursor-pointer shadow-sm"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
