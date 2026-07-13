@@ -1,46 +1,30 @@
-import { db } from '../firebase'; // Ajusta esta ruta si tu firebase.js está en otro lado
-import { ref, push, set, serverTimestamp } from 'firebase/database';
+import { db, auth } from '../firebase';
+import { ref, push, serverTimestamp } from 'firebase/database';
 
-/**
- * Función genérica para registrar acciones administrativas.
- * Cumple con la estructura de la Fase 2: timestamp, autor, accion y detalle.
- * 
- * @param {Object} currentUser - Perfil del admin logueado (debe contener uid, nombre o email)
- * @param {String} accion - Acción realizada (ej. "APROBO_RESERVA", "NUEVO_DOCENTE")
- * @param {String} detalle - Descripción legible del cambio
- */
-export const registrarAuditoriaWeb = async (currentUser, accion, detalle) => {
+export const registrarAuditoriaWeb = async (usuarioActual, accion, detalle) => {
   try {
-    // 1. Validar que exista un administrador ejecutando la acción
-    if (!currentUser || !currentUser.uid) {
-      console.warn("[Auditoría] Acción bloqueada: No se detectó un usuario autenticado.");
-      return;
-    }
-
-    // 2. Extraer la identidad (Fallback al email si no hay nombre configurado)
-    const nombreAutor = currentUser.nombre || currentUser.email || "Admin";
-
-    // 3. Apuntar al nodo paralelo que definimos en las Reglas de Seguridad
-    const auditoriaRef = ref(db, 'auditoria_web');
+    // 1. Intentamos obtener la sesión en vivo de Firebase Auth
+    const user = auth.currentUser || usuarioActual;
     
-    // 4. Generar un ID único para este nuevo evento (push)
-    const nuevoLogRef = push(auditoriaRef);
+    // 2. RESPALDO EXTREMO: Si Firebase Auth perdió la sesión temporalmente, leemos de la memoria local
+    const email = user?.email || localStorage.getItem('adminEmail') || 'Admin_Desconectado';
+    const uid = user?.uid || localStorage.getItem('adminUid') || 'UID_Desconocido';
 
-    // 5. Construir el JSON exacto de la Fase 2
-    const payloadLog = {
-      timestamp: serverTimestamp(), // Hora inmutable del servidor de Google
-      autor: {
-        uid: currentUser.uid,
-        nombre: nombreAutor
-      },
+    // 3. Estructuramos el log
+    const logData = {
       accion: accion,
-      detalle: detalle
+      detalle: detalle,
+      autor: {
+        nombre: email,
+        uid: uid
+      },
+      timestamp: serverTimestamp() // Genera la hora exacta e inmutable en los servidores de Google
     };
 
-    // 6. Inyectar en la base de datos (La regla WORM lo protegerá desde este momento)
-    await set(nuevoLogRef, payloadLog);
+    // 4. Usamos push() para crear un nuevo registro único sin sobreescribir el anterior
+    await push(ref(db, 'auditoria_web'), logData);
     
   } catch (error) {
-    console.error("[Auditoría] Fallo al guardar el registro web:", error);
+    console.error("Fallo crítico al intentar guardar en Auditoría Web:", error);
   }
 };

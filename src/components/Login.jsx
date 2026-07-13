@@ -38,6 +38,8 @@ export default function Login() {
         // 4. Guardamos el rol en el almacenamiento local del navegador para usarlo en la interfaz
         localStorage.setItem('adminRol', perfil.rol); 
         localStorage.setItem('adminSede', perfil.sede);
+        localStorage.setItem('adminEmail', user.email);
+        localStorage.setItem('adminUid', user.uid);
         
         navigate('/dashboard');
         
