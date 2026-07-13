@@ -292,7 +292,7 @@ export default function GestionAdministradores() {
           <h2 className="text-sm font-bold text-slate-800 dark:text-white">Equipo de Administración</h2>
         </div>
         <div className='overflow-x-auto [&::-webkit-scrollbar]:h-[4px] [&::-webkit-scrollbar-thumb]:bg-slate-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-track]:bg-transparent'>
-        <table className="w-full text-left">
+        <table className="w-full text-left min-w-[800px]">
           <thead>
             <tr className="bg-slate-50 dark:bg-[#111827]/40 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
               <th className="p-4 pl-6">Usuario</th>

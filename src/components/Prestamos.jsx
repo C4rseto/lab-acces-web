@@ -13,55 +13,58 @@ export default function Prestamos() {
   // NUEVO: Estado para guardar los nombres de los laboratorios permitidos 
   const [labsPermitidos, setLabsPermitidos] = useState([]);
 
+
+  // Limpiador de emojis para coincidencias exactas
+  const limpiarTextoLab = (lab) => lab ? lab.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim() : '';
+
   useEffect(() => {
     const rolAdmin = localStorage.getItem('adminRol');
     const sedeAdmin = localStorage.getItem('adminSede');
 
-    // 1. Obtener qué laboratorios le pertenecen a este administrador
-    onValue(ref(db, 'sedes'), (snapshot) => {
+    const unsubSedes = onValue(ref(db, 'sedes'), (snapshot) => {
       const dataSedes = snapshot.val();
       if (dataSedes) {
-        let nombresLabs = [];
+        let arrayLabs = [];
         if (rolAdmin === 'SUPER_ADMIN' || sedeAdmin === 'TODAS') {
-          // El Super-Admin ve todo
           Object.values(dataSedes).forEach(sedeObj => {
-            if(sedeObj.laboratorios) nombresLabs.push(...Object.values(sedeObj.laboratorios));
+            if(sedeObj.laboratorios) Object.values(sedeObj.laboratorios).forEach(v => arrayLabs.push(limpiarTextoLab(v)));
           });
         } else if (dataSedes[sedeAdmin] && dataSedes[sedeAdmin].laboratorios) {
-          // El Admin de Sede solo ve los suyos
-          nombresLabs = Object.values(dataSedes[sedeAdmin].laboratorios);
+          Object.values(dataSedes[sedeAdmin].laboratorios).forEach(v => arrayLabs.push(limpiarTextoLab(v)));
         }
-        setLabsPermitidos(nombresLabs);
+        setLabsPermitidos(arrayLabs);
       }
     });
 
-    // 2. Cargar Docentes (Igual)
-    onValue(ref(db, 'docentes'), (snapshot) => {
+    const unsubDocentes = onValue(ref(db, 'docentes'), (snapshot) => {
       setDocentes(snapshot.val() ? Object.values(snapshot.val()) : []);
     });
+
+    return () => { unsubSedes(); unsubDocentes(); };
   }, []);
 
-  // 3. Cargar y Filtrar Reservas (Depende de los laboratorios permitidos)
   useEffect(() => {
-    if (labsPermitidos.length === 0) return; // Esperar a saber qué puede ver
+    if (labsPermitidos.length === 0) return;
 
-    const unsub = onValue(ref(db, 'reservas'), (snapshot) => {
+    const unsubReservas = onValue(ref(db, 'reservas'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
         const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
         
-        // FILTRO RBAC: Solo conservar las reservas cuyo laboratorio esté en su lista permitida
-        const listaFiltrada = lista.filter(reserva => labsPermitidos.includes(reserva.laboratorio));
+        // FILTRO RBAC + CORRECCIÓN DE EMOJIS
+        const listaFiltrada = lista.filter(reserva => {
+          const labReservaLimpio = limpiarTextoLab(reserva.laboratorio);
+          return labsPermitidos.some(labPermitido => labPermitido.includes(labReservaLimpio) || labReservaLimpio.includes(labPermitido));
+        });
 
         setPendientes(listaFiltrada.filter(s => s.estado === 'pendiente'));
         setHistorial(listaFiltrada.filter(s => s.estado !== 'pendiente').reverse()); 
       } else {
-        setPendientes([]);
-        setHistorial([]);
+        setPendientes([]); setHistorial([]);
       }
     });
 
-    return () => unsub();
+    return () => unsubReservas();
   }, [labsPermitidos]);
 
   // =========================================================
