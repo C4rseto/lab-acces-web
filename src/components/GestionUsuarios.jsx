@@ -34,6 +34,7 @@ export default function GestionUsuarios() {
   const [docenteEnEdicion, setDocenteEnEdicion] = useState(null);
   const [idParaEliminar, setIdParaEliminar] = useState(null);
   const [toast, setToast] = useState(null);
+  const [laboratoriosDisponibles, setLaboratoriosDisponibles] = useState([]);
 
   const listaHoras = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const listaMinutos = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
@@ -47,6 +48,23 @@ export default function GestionUsuarios() {
         id: key
       })) : [];
       setDocentes(list);
+    });
+    const rolAdmin = localStorage.getItem('adminRol');
+    const sedeAdmin = localStorage.getItem('adminSede');
+    onValue(ref(db, 'sedes'), (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        let labs = [];
+        if (rolAdmin === 'SUPER_ADMIN' || sedeAdmin === 'TODAS') {
+          Object.values(data).forEach(sedeObj => {
+            if(sedeObj.laboratorios) Object.entries(sedeObj.laboratorios).forEach(([id, nombre]) => labs.push({id, nombre}));
+          });
+        } else if (data[sedeAdmin] && data[sedeAdmin].laboratorios) {
+          Object.entries(data[sedeAdmin].laboratorios).forEach(([id, nombre]) => labs.push({id, nombre}));
+        }
+        setLaboratoriosDisponibles(labs);
+        if(labs.length > 0) setLab(labs[0].nombre); // Auto-selecciona el primero
+      }
     });
     return () => unsub();
   }, []);
@@ -330,9 +348,9 @@ export default function GestionUsuarios() {
                       onChange={e => setLab(e.target.value)} 
                       className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg pl-3.5 pr-10 py-2.5 text-sm text-slate-800 dark:text-white cursor-pointer outline-none focus:border-emerald-600 appearance-none font-medium"
                     >
-                      <option value="💻 Lab. Cómputo">Lab. Cómputo</option>
-                      <option value="⚡ Lab. Electrónica">Lab. Electrónica</option>
-                      <option value="🧪 Lab. Química">Lab. Química</option>
+                      {laboratoriosDisponibles.map(lab => (
+                            <option key={lab.id} value={lab.nombre}>{lab.nombre}</option>
+                          ))}
                     </select>
                     <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>

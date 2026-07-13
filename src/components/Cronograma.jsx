@@ -28,7 +28,7 @@ export default function Cronograma() {
   const [filtroLab, setFiltroLab] = useState('Todos'); 
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null); 
 
-  const laboratoriosDisponibles = ['Todos', 'Lab. Cómputo', 'Lab. Electrónica', 'Lab. Química'];
+  const [laboratoriosDisponibles, setLaboratoriosDisponibles] = useState(['Todos']);
   const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
   // 🎨 PALETA COMERCIAL PARA TARJETAS EN MATRIZ
@@ -44,14 +44,25 @@ export default function Cronograma() {
   };
 
   useEffect(() => {
-    onValue(ref(db, 'docentes'), snapshot => {
+    const rolAdmin = localStorage.getItem('adminRol');
+    const sedeAdmin = localStorage.getItem('adminSede');
+
+    onValue(ref(db, 'sedes'), (snapshot) => {
       const data = snapshot.val();
-      setDocentes(data ? Object.values(data) : []);
+      if (data) {
+        let labs = ['Todos'];
+        if (rolAdmin === 'SUPER_ADMIN' || sedeAdmin === 'TODAS') {
+          Object.values(data).forEach(sedeObj => {
+            if(sedeObj.laboratorios) Object.values(sedeObj.laboratorios).forEach(v => labs.push(v.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]/g, '').trim()));
+          });
+        } else if (data[sedeAdmin] && data[sedeAdmin].laboratorios) {
+          Object.values(data[sedeAdmin].laboratorios).forEach(v => labs.push(v.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]/g, '').trim()));
+        }
+        setLaboratoriosDisponibles([...new Set(labs)]);
+      }
     });
-    onValue(ref(db, 'reservas'), snapshot => {
-      const data = snapshot.val();
-      setSolicitudes(data ? Object.values(data) : []);
-    });
+    onValue(ref(db, 'docentes'), snapshot => setDocentes(snapshot.val() ? Object.values(snapshot.val()) : []));
+    onValue(ref(db, 'reservas'), snapshot => setSolicitudes(snapshot.val() ? Object.values(snapshot.val()) : []));
   }, []);
 
   const cronogramaPorDia = () => {
@@ -65,11 +76,20 @@ export default function Cronograma() {
 
         doc.horarios?.forEach(h => {
           // Fallback adaptativo para compatibilidad con registros antiguos
-          const internalTerm = h.id_terminal || (doc.laboratorio?.includes('Electrónica') ? 'LAB_ELECTRONICA' : doc.laboratorio?.includes('Química') ? 'LAB_QUIMICA' : 'LAB_COMPUTO');
+          const internalTerm = h.id_terminal || '';
           const txtLab = h.laboratorio_texto || doc.laboratorio || 'General';
 
           if (mapa[h.dia]) {
-            if (filtroLab === 'Todos' || internalTerm === (filtroLab === 'Lab. Cómputo' ? 'LAB_COMPUTO' : filtroLab === 'Lab. Electrónica' ? 'LAB_ELECTRONICA' : 'LAB_QUIMICA')) {
+            // Normalizamos para comparar sin problemas de tildes
+            const normalizar = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+            const filtroNorm = normalizar(filtroLab);
+            
+            // Verificamos coincidencias en el nombre visual o en el id_terminal
+            const coincideFiltro = filtroLab === 'Todos' || 
+                                   normalizar(txtLab).includes(filtroNorm) ||
+                                   normalizar(internalTerm).includes(filtroNorm);
+
+            if (coincideFiltro) {
               mapa[h.dia].push({ 
                 tipo: 'Clase Regular', titulo: doc.nombre, lab: txtLab, 
                 inicio: h.inicio, fin: h.fin, correo: doc.correo || 'No especificado',
@@ -95,7 +115,26 @@ export default function Cronograma() {
 
     solicitudes.forEach(sol => {
       const diaConvertido = obtenerDiaSemana(sol.fecha);
-      if (sol.estado === 'aprobado' && diaConvertido && mapa[diaConvertido] && (filtroLab === 'Todos' || sol.laboratorio?.includes(filtroLab))) {
+      
+      // Lógica de coincidencia robusta para reservas vs. el filtro actual
+      let coincideReserva = false;
+      if (filtroLab === 'Todos') {
+        coincideReserva = true;
+      } else if (sol.laboratorio) {
+        const dbStr = sol.laboratorio.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+        const filStr = filtroLab.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+        
+        if (filStr.includes("COMPUTO") && dbStr.includes("COMPUTO")) coincideReserva = true;
+        else if (filStr.includes("ELECTRONIC") && dbStr.includes("ELECTRONIC")) coincideReserva = true;
+        else if (filStr.includes("QUIMIC") && dbStr.includes("QUIMIC")) coincideReserva = true;
+        else {
+          const cleanDB = dbStr.replace(/[^A-Z0-9]/g, '');
+          const cleanFil = filStr.replace(/[^A-Z0-9]/g, '');
+          coincideReserva = cleanDB.includes(cleanFil) || cleanFil.includes(cleanDB);
+        }
+      }
+
+      if (sol.estado === 'aprobado' && diaConvertido && mapa[diaConvertido] && coincideReserva) {
         mapa[diaConvertido].push({ 
           tipo: 'Reserva Especial', titulo: sol.estudiante, lab: sol.laboratorio, 
           inicio: sol.horaInicio, fin: sol.horaFin, fechaExacta: sol.fecha,

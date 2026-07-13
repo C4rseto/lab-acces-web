@@ -123,10 +123,18 @@ export default function Dashboard() {
   const auditoriaFiltrada = todasAuditorias.filter(log => log.id_terminal === labSeleccionadoId);
   const alertasSeguridad = auditoriaFiltrada.filter(log => log.evento === 'ACCESO_DENEGADO' || log.evento === 'PUERTA_ABANDONADA').length;
   
+  // Limpiador universal de emojis y caracteres especiales
+  const limpiarTextoLab = (lab) => lab ? lab.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim() : '';
+
   const reservasPendientes = todasReservas.filter(res => {
-    // Asumiendo que ahora las reservas de la app también traen el id_terminal o puedes buscar por nombre exacto
     const esPendiente = res.estado && res.estado.toLowerCase() === 'pendiente';
-    return esPendiente && res.laboratorio === nombreLabVisual; 
+    
+    // Comparamos sin emojis ni tildes para evitar falsos negativos
+    const normalizar = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+    const labReservaLimpio = normalizar(limpiarTextoLab(res.laboratorio));
+    const labSeleccionadoLimpio = normalizar(limpiarTextoLab(nombreLabVisual));
+    
+    return esPendiente && (labReservaLimpio.includes(labSeleccionadoLimpio) || labSeleccionadoLimpio.includes(labReservaLimpio)); 
   }).length;
 
 
