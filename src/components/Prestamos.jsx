@@ -6,33 +6,63 @@ import { ref, onValue, set } from 'firebase/database';
 export default function Prestamos() {
   const [pendientes, setPendientes] = useState([]);
   const [historial, setHistorial] = useState([]);
-  const [docentes, setDocentes] = useState([]); // <-- NUEVO: Cargamos los docentes para revisar las clases regulares
+  const [docentes, setDocentes] = useState([]);
   const [seleccionada, setSeleccionada] = useState(null);
   const [respuestaAdmin, setRespuestaAdmin] = useState(''); 
-  
-  // <-- NUEVO: Estado para saber si hay un cruce de horario detectado
-  const [conflicto, setConflicto] = useState(null); 
+  const [conflicto, setConflicto] = useState(null);
+  // NUEVO: Estado para guardar los nombres de los laboratorios permitidos 
+  const [labsPermitidos, setLabsPermitidos] = useState([]);
 
   useEffect(() => {
-    // 1. Cargar Reservas
-    onValue(ref(db, 'reservas'), (snapshot) => {
+    const rolAdmin = localStorage.getItem('adminRol');
+    const sedeAdmin = localStorage.getItem('adminSede');
+
+    // 1. Obtener qué laboratorios le pertenecen a este administrador
+    onValue(ref(db, 'sedes'), (snapshot) => {
+      const dataSedes = snapshot.val();
+      if (dataSedes) {
+        let nombresLabs = [];
+        if (rolAdmin === 'SUPER_ADMIN' || sedeAdmin === 'TODAS') {
+          // El Super-Admin ve todo
+          Object.values(dataSedes).forEach(sedeObj => {
+            if(sedeObj.laboratorios) nombresLabs.push(...Object.values(sedeObj.laboratorios));
+          });
+        } else if (dataSedes[sedeAdmin] && dataSedes[sedeAdmin].laboratorios) {
+          // El Admin de Sede solo ve los suyos
+          nombresLabs = Object.values(dataSedes[sedeAdmin].laboratorios);
+        }
+        setLabsPermitidos(nombresLabs);
+      }
+    });
+
+    // 2. Cargar Docentes (Igual)
+    onValue(ref(db, 'docentes'), (snapshot) => {
+      setDocentes(snapshot.val() ? Object.values(snapshot.val()) : []);
+    });
+  }, []);
+
+  // 3. Cargar y Filtrar Reservas (Depende de los laboratorios permitidos)
+  useEffect(() => {
+    if (labsPermitidos.length === 0) return; // Esperar a saber qué puede ver
+
+    const unsub = onValue(ref(db, 'reservas'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
         const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        setPendientes(lista.filter(s => s.estado === 'pendiente'));
-        setHistorial(lista.filter(s => s.estado !== 'pendiente').reverse()); 
+        
+        // FILTRO RBAC: Solo conservar las reservas cuyo laboratorio esté en su lista permitida
+        const listaFiltrada = lista.filter(reserva => labsPermitidos.includes(reserva.laboratorio));
+
+        setPendientes(listaFiltrada.filter(s => s.estado === 'pendiente'));
+        setHistorial(listaFiltrada.filter(s => s.estado !== 'pendiente').reverse()); 
       } else {
         setPendientes([]);
         setHistorial([]);
       }
     });
 
-    // 2. Cargar Docentes (Para verificar choques con clases normales)
-    onValue(ref(db, 'docentes'), (snapshot) => {
-      const data = snapshot.val();
-      setDocentes(data ? Object.values(data) : []);
-    });
-  }, []);
+    return () => unsub();
+  }, [labsPermitidos]);
 
   // =========================================================
   // FUNCIONES AUXILIARES

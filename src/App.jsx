@@ -7,6 +7,8 @@ import Prestamos from './components/Prestamos';
 import Cronograma from './components/Cronograma';
 import Reportes from './components/Reportes';
 import GestionAdministradores from './components/GestionAdministradores';
+import AuditoriaWeb from './components/AuditoriaWeb';
+import {RutaProtegida} from './components/ProtectedRoute';
 
 // Componente principal: El "Cascarón" con la barra a la izquierda
 function AdminLayout({ children, esOscuro, setEsOscuro }) {
@@ -64,10 +66,15 @@ function AdminLayout({ children, esOscuro, setEsOscuro }) {
                 Reportes / Auditoría
               </button>
               {rolUsuario === 'SUPER_ADMIN' && (
+                <>
                 <button onClick={() => navigate('/gestion-admins')} className={isActive('/gestion-admins')}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3a5 5 0 00-5 5v1.28A2 2 0 005 11.2V13a1 1 0 001 1h12a1 1 0 001-1v-1.8a2 2 0 00-2-1.92V8a5 5 0 00-5-5zm-3 6V8a3 3 0 116 0v1H9zm-2 4h10" /></svg>
                   Gestión de Administradores
-                </button>)}
+                </button>
+                <button onClick={() => navigate('/auditoria-web')} className={isActive('/auditoria-web')}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3a5 5 0 00-5 5v1.28A2 2 0 005 11.2V13a1 1 0 001 1h12a1 1 0 001-1v-1.8a2 2 0 00-2-1.92V8a5 5 0 00-5-5zm-3 6V8a3 3 0 116 0v1H9zm-2 4h10" /></svg>
+                  Auditoría Web
+                </button></>)}
             </nav>
           </div>
         </div>
@@ -135,12 +142,14 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route path="/dashboard" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Dashboard /></AdminLayout>} />
-        <Route path="/usuarios" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><GestionUsuarios /></AdminLayout>} />
-        <Route path="/prestamos" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Prestamos /></AdminLayout>} />
-        <Route path="/cronograma" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Cronograma /></AdminLayout>} />
-        <Route path="/reportes" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Reportes /></AdminLayout>} />
-        <Route path="/gestion-admins" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><GestionAdministradores /></AdminLayout>} />
+        <Route path="/dashboard" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Dashboard /></AdminLayout></RutaProtegida>} />
+        <Route path="/usuarios" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><GestionUsuarios /></AdminLayout></RutaProtegida>} />
+        <Route path="/prestamos" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Prestamos /></AdminLayout></RutaProtegida>} />
+        <Route path="/cronograma" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Cronograma /></AdminLayout></RutaProtegida>} />
+        <Route path="/reportes" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Reportes /></AdminLayout></RutaProtegida>} />
+
+        <Route path="/gestion-admins" element={<RutaProtegida rolRequerido="SUPER_ADMIN"><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><GestionAdministradores /></AdminLayout></RutaProtegida>} />
+        <Route path="/auditoria-web" element={<RutaProtegida rolRequerido="SUPER_ADMIN"><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><AuditoriaWeb /></AdminLayout></RutaProtegida>} />
       </Routes>
     </BrowserRouter>
   );

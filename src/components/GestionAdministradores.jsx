@@ -115,6 +115,37 @@ export default function GestionAdministradores() {
     }
   };
 
+  const resetearPinAdministrador = async (uidTarjeta, nombreAdmin) => {
+    const nuevoPin = prompt(`Ingrese el nuevo PIN de 4 dígitos para el administrador ${nombreAdmin}:`);
+    
+    // Validamos que haya escrito 4 números
+    if (nuevoPin && /^\d{4}$/.test(nuevoPin)) {
+      try {
+        // Encriptamos el nuevo PIN
+        const pinHasheado = await generarHashSHA256(nuevoPin);
+        
+        // Lo inyectamos directo a la credencial del ESP32
+        await update(ref(db, `laboratorio/usuarios/${uidTarjeta}`), {
+          pin: pinHasheado
+        });
+
+        // Dejamos registro inmutable
+        await registrarAuditoriaWeb(
+          auth.currentUser,
+          "RESETEO_PIN_ADMIN",
+          `Restableció el PIN físico de la tarjeta maestra ${uidTarjeta} (${nombreAdmin})`
+        );
+
+        lanzarToast('¡PIN actualizado y sincronizado con las puertas! 🔑');
+      } catch (error) {
+        console.error("Error al resetear PIN:", error);
+        lanzarToast('❌ Hubo un error de conexión.');
+      }
+    } else if (nuevoPin) {
+      alert("El PIN debe contener exactamente 4 números.");
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in-up">
       {/* Sistema de Toast */}
@@ -230,6 +261,7 @@ export default function GestionAdministradores() {
               <th className="p-4">Credencial RFID</th>
               <th className="p-4">Rol & Sede Asignada</th>
               <th className="p-4 text-center">Estado</th>
+              <th className="p-4">PIN</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-sm text-slate-700 dark:text-slate-300">
@@ -250,6 +282,15 @@ export default function GestionAdministradores() {
                   <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded border border-emerald-200 dark:border-emerald-500/20">
                     {adm.estado}
                   </span>
+                </td>
+                <td>
+                    <button 
+                      onClick={() => resetearPinAdministrador(adm.uid_tarjeta, adm.nombre)}
+                      className="ml-2 text-[10px] bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 px-2 py-1 rounded hover:bg-emerald-100 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                      title="Asignar un nuevo PIN"
+                    >
+                      Reset PIN
+                  </button>
                 </td>
               </tr>
             ))}
