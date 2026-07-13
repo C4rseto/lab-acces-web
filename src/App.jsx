@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, Link} from 'react-router-dom';
+import { signOut } from 'firebase/auth';
+import { auth } from './firebase';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import GestionUsuarios from './components/GestionUsuarios';
 import Prestamos from './components/Prestamos';
 import Cronograma from './components/Cronograma';
 import Reportes from './components/Reportes';
+import GestionAdministradores from './components/GestionAdministradores';
+import AuditoriaWeb from './components/AuditoriaWeb';
+import {RutaProtegida} from './components/ProtectedRoute';
 
 // Componente principal: El "Cascarón" con la barra a la izquierda
 function AdminLayout({ children, esOscuro, setEsOscuro }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const rolUsuario = localStorage.getItem('adminRol');
 
   // ESTILOS SOBRIOS Y PROFESIONALES (Actualizados para encajar con el nuevo tono oscuro)
   const isActive = (path) => location.pathname === path 
@@ -61,23 +67,31 @@ function AdminLayout({ children, esOscuro, setEsOscuro }) {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 Reportes / Auditoría
               </button>
+              {rolUsuario === 'SUPER_ADMIN' && (
+                <>
+                <button onClick={() => navigate('/gestion-admins')} className={isActive('/gestion-admins')}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3a5 5 0 00-5 5v1.28A2 2 0 005 11.2V13a1 1 0 001 1h12a1 1 0 001-1v-1.8a2 2 0 00-2-1.92V8a5 5 0 00-5-5zm-3 6V8a3 3 0 116 0v1H9zm-2 4h10" /></svg>
+                  Gestión de Administradores
+                </button>
+                <button onClick={() => navigate('/auditoria-web')} className={isActive('/auditoria-web')}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3a5 5 0 00-5 5v1.28A2 2 0 005 11.2V13a1 1 0 001 1h12a1 1 0 001-1v-1.8a2 2 0 00-2-1.92V8a5 5 0 00-5-5zm-3 6V8a3 3 0 116 0v1H9zm-2 4h10" /></svg>
+                  Auditoría Web
+                </button></>)}
             </nav>
           </div>
         </div>
 
         {/* Perfil Inferior */}
         <div className="p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161F30]">
-          <div className="flex items-center gap-4 mb-4 px-2">
-            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold text-sm text-slate-700 dark:text-slate-300">
-              AD
-            </div>
-            <div>
-              <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">Administrador</p>
-              {/*<p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">ID: ESP32-Dev</p>*/}
-            </div>
-          </div>
           <button 
-            onClick={() => navigate('/')} 
+            onClick={async () =>{
+              await signOut(auth); // 1. Cierra sesión en Google/Firebase
+              localStorage.removeItem('adminRol'); // 2. Borra tu credencial del navegador
+              localStorage.removeItem('adminSede'); 
+              localStorage.removeItem('adminEmail'); 
+              localStorage.removeItem('adminUid');
+              navigate('/'); // 3. Te manda al Login
+            }}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold text-sm transition-colors cursor-pointer shadow-sm"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
@@ -137,11 +151,14 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route path="/dashboard" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Dashboard /></AdminLayout>} />
-        <Route path="/usuarios" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><GestionUsuarios /></AdminLayout>} />
-        <Route path="/prestamos" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Prestamos /></AdminLayout>} />
-        <Route path="/cronograma" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Cronograma /></AdminLayout>} />
-        <Route path="/reportes" element={<AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Reportes /></AdminLayout>} />
+        <Route path="/dashboard" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Dashboard /></AdminLayout></RutaProtegida>} />
+        <Route path="/usuarios" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><GestionUsuarios /></AdminLayout></RutaProtegida>} />
+        <Route path="/prestamos" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Prestamos /></AdminLayout></RutaProtegida>} />
+        <Route path="/cronograma" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Cronograma /></AdminLayout></RutaProtegida>} />
+        <Route path="/reportes" element={<RutaProtegida><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><Reportes /></AdminLayout></RutaProtegida>} />
+
+        <Route path="/gestion-admins" element={<RutaProtegida rolRequerido="SUPER_ADMIN"><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><GestionAdministradores /></AdminLayout></RutaProtegida>} />
+        <Route path="/auditoria-web" element={<RutaProtegida rolRequerido="SUPER_ADMIN"><AdminLayout esOscuro={esOscuro} setEsOscuro={setEsOscuro}><AuditoriaWeb /></AdminLayout></RutaProtegida>} />
       </Routes>
     </BrowserRouter>
   );

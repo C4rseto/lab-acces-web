@@ -20,39 +20,46 @@ export default function Reportes() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
 
-  const laboratoriosDisponibles = ['Todos', 'Lab. Cómputo', 'Lab. Electrónica', 'Lab. Química'];
+  const [laboratoriosDisponibles, setLaboratoriosDisponibles] = useState(['Todos']);
   const estadosReservas = ['Todos', 'aprobado', 'denegado'];
   const eventosAccesos = ['Todos', 'ACCESO_CONCEDIDO', 'ACCESO_DENEGADO', 'PUERTA_ABANDONADA'];
 
   useEffect(() => {
-    // 1. Cargar Reservas Pasadas
-    onValue(ref(db, 'reservas'), (snapshot) => {
+    const rolAdmin = localStorage.getItem('adminRol');
+    const sedeAdmin = localStorage.getItem('adminSede');
+
+    // Carga de Sedes (RBAC)
+    onValue(ref(db, 'sedes'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        setHistorialReservas(lista.filter(r => r.estado !== 'pendiente').reverse());
-      } else {
-        setHistorialReservas([]);
+        let labs = ['Todos'];
+        if (rolAdmin === 'SUPER_ADMIN' || sedeAdmin === 'TODAS') {
+          Object.values(data).forEach(sedeObj => {
+            if(sedeObj.laboratorios) Object.values(sedeObj.laboratorios).forEach(v => labs.push(v));
+          });
+        } else if (data[sedeAdmin] && data[sedeAdmin].laboratorios) {
+          Object.values(data[sedeAdmin].laboratorios).forEach(v => labs.push(v));
+        }
+        setLaboratoriosDisponibles([...new Set(labs)]); // Evita duplicados
       }
     });
 
-    // 2. Cargar Accesos Físicos (Puerta IoT)
+    onValue(ref(db, 'reservas'), (snapshot) => {
+      const data = snapshot.val();
+      setHistorialReservas(data ? Object.keys(data).map(key => ({ id: key, ...data[key] })).filter(r => r.estado !== 'pendiente').reverse() : []);
+    });
+
     onValue(ref(db, 'laboratorio/auditoria'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const logs = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        logs.sort((a, b) => b.hora.localeCompare(a.hora));
+        const logs = Object.keys(data).map(key => ({ id: key, ...data[key] })).sort((a, b) => b.hora.localeCompare(a.hora));
         setHistorialAccesos(logs);
       } else {
         setHistorialAccesos([]);
       }
     });
 
-    // 3. Cargar Docentes
-    onValue(ref(db, 'docentes'), (snapshot) => {
-      const data = snapshot.val();
-      setDocentes(data ? Object.values(data) : []);
-    });
+    onValue(ref(db, 'docentes'), (snapshot) => setDocentes(snapshot.val() ? Object.values(snapshot.val()) : []));
   }, []);
 
   const obtenerPropietario = (uidCard) => {
@@ -65,24 +72,44 @@ export default function Reportes() {
     return encontrado ? encontrado.nombre : '⚠️ Credencial No Registrada';
   };
 
+  //Normalizamos para ignorar tildes y mayúsculas
   const coincideLab = (labDB, filtro) => {
     if (filtro === 'Todos') return true;
     if (!labDB) return false;
-    if (filtro.includes('Cómputo') && labDB.includes('Cómputo')) return true;
-    if (filtro.includes('Electrónica') && labDB.includes('Electrónica')) return true;
-    if (filtro.includes('Química') && labDB.includes('Química')) return true;
-    return false;
-  };
+    
+    // Quitamos tildes y pasamos a mayúsculas
+    const dbStr = labDB.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+    const filStr = filtro.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 
-  // ALGORITMO DE FILTRADO POR FECHAS
+    // 1er Nivel: Filtro por palabras clave raíz
+    if (filStr.includes("COMPUTO") && dbStr.includes("COMPUTO")) return true;
+    if (filStr.includes("ELECTRONIC") && dbStr.includes("ELECTRONIC")) return true;
+    if (filStr.includes("QUIMIC") && dbStr.includes("QUIMIC")) return true;
+    
+    // 2do Nivel: Limpieza extrema (Convierte "LAB_COMPUTO" y "💻 Lab. Cómputo" en "LABCOMPUTO")
+    const cleanDB = dbStr.replace(/[^A-Z0-9]/g, '');
+    const cleanFil = filStr.replace(/[^A-Z0-9]/g, '');
+    
+    return cleanDB.includes(cleanFil) || cleanFil.includes(cleanDB);
+  };
+  //Soporte dual para fechas IoT (guiones) y App (barras)
   const cumpleFiltroFecha = (fechaStr) => {
     if (!fechaStr) return true;
     
     const soloFecha = fechaStr.split(' ')[0];
-    const partes = soloFecha.split('/');
-    if (partes.length !== 3) return true;
+    let fechaRegistro;
 
-    const fechaRegistro = new Date(partes[2], partes[1] - 1, partes[0]);
+    if (soloFecha.includes('-')) {
+      // Formato IoT: YYYY-MM-DD
+      const partes = soloFecha.split('-');
+      fechaRegistro = new Date(partes[0], partes[1] - 1, partes[2]);
+    } else if (soloFecha.includes('/')) {
+      // Formato App: DD/MM/YYYY
+      const partes = soloFecha.split('/');
+      fechaRegistro = new Date(partes[2], partes[1] - 1, partes[0]);
+    } else {
+      return true;
+    }
 
     if (fechaInicio) {
       const inicio = new Date(fechaInicio + 'T00:00:00');
@@ -102,8 +129,10 @@ export default function Reportes() {
            cumpleFiltroFecha(res.fecha);
   });
 
+  //Aplicamos el filtro permitiendo leer el id_terminal del hardware
   const accesosFiltrados = historialAccesos.filter(acc => {
-    return coincideLab(acc.laboratorio, filtroLab) &&
+    const identificadorLab = acc.id_terminal || acc.laboratorio || '';
+    return coincideLab(identificadorLab, filtroLab) &&
            (filtroEventoAcceso === 'Todos' || acc.evento === filtroEventoAcceso) &&
            cumpleFiltroFecha(acc.hora);
   });

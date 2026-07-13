@@ -1,37 +1,71 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
-import { ref, onValue, set } from 'firebase/database'; 
+import { db, auth } from '../firebase';
+import { registrarAuditoriaWeb } from '../utils/auditLogger'; //nuevo: función de auditloger.js
+import { ref, onValue, set, update, get} from 'firebase/database'; 
 
 export default function Prestamos() {
   const [pendientes, setPendientes] = useState([]);
   const [historial, setHistorial] = useState([]);
-  const [docentes, setDocentes] = useState([]); // <-- NUEVO: Cargamos los docentes para revisar las clases regulares
+  const [docentes, setDocentes] = useState([]);
   const [seleccionada, setSeleccionada] = useState(null);
   const [respuestaAdmin, setRespuestaAdmin] = useState(''); 
-  
-  // <-- NUEVO: Estado para saber si hay un cruce de horario detectado
-  const [conflicto, setConflicto] = useState(null); 
+  const [conflicto, setConflicto] = useState(null);
+  // NUEVO: Estado para guardar los nombres de los laboratorios permitidos 
+  const [labsPermitidos, setLabsPermitidos] = useState([]);
+
+
+  // Limpiador de emojis para coincidencias exactas
+  const limpiarTextoLab = (lab) => lab ? lab.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim() : '';
 
   useEffect(() => {
-    // 1. Cargar Reservas
-    onValue(ref(db, 'reservas'), (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        setPendientes(lista.filter(s => s.estado === 'pendiente'));
-        setHistorial(lista.filter(s => s.estado !== 'pendiente').reverse()); 
-      } else {
-        setPendientes([]);
-        setHistorial([]);
+    const rolAdmin = localStorage.getItem('adminRol');
+    const sedeAdmin = localStorage.getItem('adminSede');
+
+    const unsubSedes = onValue(ref(db, 'sedes'), (snapshot) => {
+      const dataSedes = snapshot.val();
+      if (dataSedes) {
+        let arrayLabs = [];
+        if (rolAdmin === 'SUPER_ADMIN' || sedeAdmin === 'TODAS') {
+          Object.values(dataSedes).forEach(sedeObj => {
+            if(sedeObj.laboratorios) Object.values(sedeObj.laboratorios).forEach(v => arrayLabs.push(limpiarTextoLab(v)));
+          });
+        } else if (dataSedes[sedeAdmin] && dataSedes[sedeAdmin].laboratorios) {
+          Object.values(dataSedes[sedeAdmin].laboratorios).forEach(v => arrayLabs.push(limpiarTextoLab(v)));
+        }
+        setLabsPermitidos(arrayLabs);
       }
     });
 
-    // 2. Cargar Docentes (Para verificar choques con clases normales)
-    onValue(ref(db, 'docentes'), (snapshot) => {
-      const data = snapshot.val();
-      setDocentes(data ? Object.values(data) : []);
+    const unsubDocentes = onValue(ref(db, 'docentes'), (snapshot) => {
+      setDocentes(snapshot.val() ? Object.values(snapshot.val()) : []);
     });
+
+    return () => { unsubSedes(); unsubDocentes(); };
   }, []);
+
+  useEffect(() => {
+    if (labsPermitidos.length === 0) return;
+
+    const unsubReservas = onValue(ref(db, 'reservas'), (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        
+        // FILTRO RBAC + CORRECCIÓN DE EMOJIS
+        const listaFiltrada = lista.filter(reserva => {
+          const labReservaLimpio = limpiarTextoLab(reserva.laboratorio);
+          return labsPermitidos.some(labPermitido => labPermitido.includes(labReservaLimpio) || labReservaLimpio.includes(labPermitido));
+        });
+
+        setPendientes(listaFiltrada.filter(s => s.estado === 'pendiente'));
+        setHistorial(listaFiltrada.filter(s => s.estado !== 'pendiente').reverse()); 
+      } else {
+        setPendientes([]); setHistorial([]);
+      }
+    });
+
+    return () => unsubReservas();
+  }, [labsPermitidos]);
 
   // =========================================================
   // FUNCIONES AUXILIARES
@@ -63,6 +97,18 @@ export default function Prestamos() {
     if (!seleccionada) {
       setConflicto(null);
       return;
+    }
+
+    const partesF = seleccionada.fecha.split('/');
+    if (partesF.length === 3) {
+      const fechaResReq = new Date(partesF[2], partesF[1] - 1, partesF[0]);
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      
+      if (fechaResReq < hoy) {
+        setConflicto("Esta solicitud pertenece a una fecha pasada. No es posible otorgar accesos físicos de manera retroactiva.");
+        return; // Salimos de la función y bloqueamos el botón "Aprobar" instantáneamente
+      }
     }
 
     const nuevoInicioMin = convertirAMinutos(seleccionada.horaInicio);
@@ -119,16 +165,78 @@ export default function Prestamos() {
   // =========================================================
   const procesar = async (aprobada) => {
     if (seleccionada) {
-      // Seguro anti-hackeos: Si el botón está deshabilitado y lograron darle click
       if (aprobada && conflicto) {
         alert(`⚠️ No se puede aprobar: ${conflicto}`);
         return;
       }
 
       const nuevoEstado = aprobada ? 'aprobado' : 'denegado';
-      await set(ref(db, `reservas/${seleccionada.id}/estado`), nuevoEstado);
-      await set(ref(db, `reservas/${seleccionada.id}/respuestaAdmin`), respuestaAdmin || (aprobada ? 'Aprobado sin comentarios.' : 'Solicitud denegada.'));
+      const updates = {};
       
+      // 1. Actualización en el panel web (La app móvil lee esto)
+      updates[`reservas/${seleccionada.id}/estado`] = nuevoEstado;
+      updates[`reservas/${seleccionada.id}/respuestaAdmin`] = respuestaAdmin || (aprobada ? 'Aprobado sin comentarios.' : 'Solicitud denegada.');
+
+      // 2. INYECCIÓN AL HARDWARE (IoT) - Búsqueda estricta por UID de Tarjeta
+      if (aprobada) {
+        // Encontramos el perfil del docente para obtener su UID de tarjeta
+        const docenteEncontrado = docentes.find(d => d.nombre === seleccionada.estudiante);
+        const uidTarjeta = docenteEncontrado ? docenteEncontrado.uid : null;
+
+        if (uidTarjeta) {
+          // Mapeo seguro del terminal para el hardware
+          const labStr = seleccionada.laboratorio.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+          let idTerminal = 'LAB_COMPUTO';
+          if (labStr.includes('ELECTRONIC')) idTerminal = 'LAB_ELECTRONICA';
+          if (labStr.includes('QUIMIC')) idTerminal = 'LAB_QUIMICA';
+
+          const bloqueExtra = {
+            dia: obtenerDiaSemana(seleccionada.fecha),
+            inicio: seleccionada.horaInicio,
+            fin: seleccionada.horaFin,
+            id_terminal: idTerminal,
+            laboratorio_texto: seleccionada.laboratorio,
+            id_reserva: seleccionada.id, // Marca de agua para el Recolector de Basura
+            es_extraordinaria: true
+          };
+
+          // BÚSQUEDA INTELIGENTE: Recorremos el nodo IoT para encontrar la llave exacta que tiene este UID
+          const snapUsuarios = await get(ref(db, 'laboratorio/usuarios'));
+          if (snapUsuarios.exists()) {
+            let keyUsuarioIoT = null;
+            let horariosActuales = [];
+            
+            snapUsuarios.forEach((childSnap) => {
+              const datos = childSnap.val();
+              // A nivel de hardware solo nos importa que el UID coincida
+              if (datos.uid === uidTarjeta) {
+                keyUsuarioIoT = childSnap.key;
+                horariosActuales = datos.horarios || [];
+              }
+            });
+
+            if (keyUsuarioIoT) {
+              // Inyectamos el horario en la ruta exacta que el ESP32 está escuchando
+              horariosActuales.push(bloqueExtra);
+              updates[`laboratorio/usuarios/${keyUsuarioIoT}/horarios`] = horariosActuales;
+            } else {
+              alert("⚠️ Se encontró al docente, pero no tiene un perfil de hardware sincronizado. La puerta no se abrirá.");
+            }
+          }
+        } else {
+          alert("⚠️ El Docente no tiene una tarjeta RFID registrada. La puerta no se abrirá automáticamente.");
+        }
+      }
+
+      // Ejecutamos todos los cambios atómicamente
+      await update(ref(db), updates);
+      
+      await registrarAuditoriaWeb(
+        auth.currentUser,
+        aprobada ? "APROBO_RESERVA" : "RECHAZO_RESERVA",
+        `${aprobada ? 'Aprobó' : 'Rechazó'} la reserva del docente ${seleccionada.estudiante} en ${seleccionada.laboratorio}`
+      );
+
       setSeleccionada(null);
       setRespuestaAdmin('');
     }
