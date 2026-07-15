@@ -9,7 +9,7 @@ export default function Reportes() {
   // Estados de datos de Firebase
   const [historialReservas, setHistorialReservas] = useState([]);
   const [historialAccesos, setHistorialAccesos] = useState([]);
-  const [docentes, setDocentes] = useState([]);
+  const [usuariosHardware, setUsuariosHardware] = useState([]);
 
   // Estados de filtros globales
   const [filtroLab, setFiltroLab] = useState('Todos');
@@ -59,15 +59,18 @@ export default function Reportes() {
       }
     });
 
-    onValue(ref(db, 'docentes'), (snapshot) => setDocentes(snapshot.val() ? Object.values(snapshot.val()) : []));
+    onValue(ref(db, 'laboratorio/usuarios'), (snapshot) => {
+      const data = snapshot.val();
+      setUsuariosHardware(data ? Object.values(data) : []);
+    });
   }, []);
 
   const obtenerPropietario = (uidCard) => {
     if (!uidCard) return 'Desconocido';
     if (uidCard === 'SISTEMA') return 'Monitor de Hardware';
     if (uidCard === 'BOTON_INTERIOR') return 'Pulsador de Salida (REX)';
-    const encontrado = docentes.find(d => 
-      d.uid && d.uid.replace(/\s+/g, '').toUpperCase() === uidCard.replace(/\s+/g, '').toUpperCase()
+    const encontrado = usuariosHardware.find(u => 
+      u.uid && u.uid.replace(/\s+/g, '').toUpperCase() === uidCard.replace(/\s+/g, '').toUpperCase()
     );
     return encontrado ? encontrado.nombre : '⚠️ Credencial No Registrada';
   };

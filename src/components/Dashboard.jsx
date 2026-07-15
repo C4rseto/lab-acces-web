@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [mostrarModalReset, setMostrarModalReset] = useState(false);
   const [ultimoPing, setUltimoPing] = useState(0);
   const [terminalOffline, setTerminalOffline] = useState(false);
+  const [usuariosHardware, setUsuariosHardware] = useState([]);
 
   useEffect(() => {
     // 1. CARGA DINÁMICA DE SEDES Y LABORATORIOS (RBAC)
@@ -57,9 +58,10 @@ export default function Dashboard() {
       }
     });
 
-    // 2. Carga de Docentes, Auditoría y Reservas (Se mantiene igual)
-    const unsubDocentes = onValue(ref(db, 'docentes'), (snapshot) => {
-      setDocentes(snapshot.val() ? Object.values(snapshot.val()) : []);
+    // 2. Carga de Usuarios, Auditoría y Reservas (Se mantiene igual)
+    const unsubDocentes = onValue(ref(db, 'laboratorio/usuarios'), (snapshot) => {
+      const data = snapshot.val();
+      setUsuariosHardware(data ? Object.values(data) : []);
     });
 
     const unsubAuditoria = onValue(ref(db, 'laboratorio/auditoria'), (snapshot) => {
@@ -228,8 +230,8 @@ export default function Dashboard() {
     if (uidCard === 'BOTON_INTERIOR') return 'Pulsador de Salida (REX)';
     
     // Buscar en la lista de docentes
-    const encontrado = docentes.find(d => 
-      d.uid && d.uid.replace(/\s+/g, '').toUpperCase() === uidCard.replace(/\s+/g, '').toUpperCase()
+    const encontrado = usuariosHardware.find(u => 
+      u.uid && u.uid.replace(/\s+/g, '').toUpperCase() === uidCard.replace(/\s+/g, '').toUpperCase()
     );
     
     return encontrado ? encontrado.nombre : '⚠️ Credencial No Registrada';
