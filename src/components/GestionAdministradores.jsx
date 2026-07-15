@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase'; 
-import { ref, onValue, update } from 'firebase/database';
+import { ref, onValue, update, get} from 'firebase/database';
 import { registrarAuditoriaWeb } from '../utils/auditLogger';
 import { generarHashSHA256 } from '../utils/crypto';
 
@@ -17,7 +17,9 @@ export default function GestionAdministradores() {
   const [pinPlano, setPinPlano] = useState('');
   const [rol, setRol] = useState('ADMIN_SEDE');
   const [sede, setSede] = useState('TODAS'); // Default a TODAS
-
+  const [modalPin, setModalPin] = useState(null);
+  const [nuevoPinInput, setNuevoPinInput] = useState('');
+  
   const lanzarToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
@@ -120,33 +122,52 @@ export default function GestionAdministradores() {
     }
   };
 
-  const resetearPinAdministrador = async (uidTarjeta, nombreAdmin) => {
-    const nuevoPin = prompt(`Ingrese el nuevo PIN de 4 dígitos para el administrador ${nombreAdmin}:`);
-    
-    // Validamos que haya escrito 4 números
-    if (nuevoPin && /^\d{4}$/.test(nuevoPin)) {
+  const abrirModalPin = (uidTarjeta, nombreAdmin) => {
+    setModalPin({ uid: uidTarjeta, nombre: nombreAdmin });
+    setNuevoPinInput('');
+  };
+
+  const confirmarResetPin = async () => {
+    if (nuevoPinInput && /^\d{4}$/.test(nuevoPinInput)) {
       try {
-        // Encriptamos el nuevo PIN
-        const pinHasheado = await generarHashSHA256(nuevoPin);
+        const pinHasheado = await generarHashSHA256(nuevoPinInput);
         
-        // Lo inyectamos directo a la credencial del ESP32
-        await update(ref(db, `laboratorio/usuarios/${uidTarjeta}`), {
-          pin: pinHasheado
-        });
+        // 1. Descargamos el nodo de hardware para hacer una búsqueda inteligente
+        const snapUsuarios = await get(ref(db, 'laboratorio/usuarios'));
+        let keyUsuarioIoT = null;
+        
+        // 2. Buscamos la llave exacta que le pertenece a esta tarjeta maestra
+        if (snapUsuarios.exists()) {
+          snapUsuarios.forEach((child) => {
+            if (child.val().uid === modalPin.uid) {
+              keyUsuarioIoT = child.key;
+            }
+          });
+        }
 
-        // Dejamos registro inmutable
-        await registrarAuditoriaWeb(
-          auth.currentUser,
-          "RESETEO_PIN_ADMIN",
-          `Restableció el PIN físico de la tarjeta maestra ${uidTarjeta} (${nombreAdmin})`
-        );
-
-        lanzarToast('¡PIN actualizado y sincronizado con las puertas! 🔑');
+        if (keyUsuarioIoT) {
+          // 3. Ejecutamos un "Atomic Update"
+          const updates = {};
+          updates[`laboratorio/usuarios/${keyUsuarioIoT}/pin`] = pinHasheado;
+          
+          await update(ref(db), updates);
+          
+          await registrarAuditoriaWeb(
+            auth.currentUser, 
+            "RESETEO_PIN_ADMIN", 
+            `Restableció el PIN de la tarjeta maestra ${modalPin.uid} (${modalPin.nombre})`
+          );
+          
+          lanzarToast('¡PIN actualizado y sincronizado con el hardware! 🔑');
+          setModalPin(null);
+        } else {
+          alert("⚠️ Fallo crítico: No se encontró la tarjeta en el nodo de hardware IoT.");
+        }
       } catch (error) {
-        console.error("Error al resetear PIN:", error);
-        lanzarToast('❌ Hubo un error de conexión.');
+        console.error("Error detallado al guardar PIN:", error);
+        lanzarToast('❌ Hubo un error de conexión con la base de datos.');
       }
-    } else if (nuevoPin) {
+    } else {
       alert("El PIN debe contener exactamente 4 números.");
     }
   };
@@ -335,7 +356,7 @@ export default function GestionAdministradores() {
                 <td className="p-4">
                   <div className="flex justify-center items-center gap-2">
                     <button 
-                      onClick={() => resetearPinAdministrador(adm.uid_tarjeta, adm.nombre)}
+                      onClick={() => abrirModalPin(adm.uid_tarjeta, adm.nombre)}
                       disabled={adm.estado !== 'ACTIVO'}
                       className={`text-[10px] px-2.5 py-1.5 rounded font-bold transition-colors cursor-pointer border ${
                         adm.estado !== 'ACTIVO' 
@@ -365,6 +386,24 @@ export default function GestionAdministradores() {
         </table>
         </div>
       </div>
+      {/* MODAL RESET PIN */}
+      {modalPin && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-slate-700 rounded-2xl p-6 w-[300px] text-center shadow-xl">
+            <h3 className="text-slate-900 dark:text-white font-bold mb-4 text-sm">Nuevo PIN para {modalPin.nombre}</h3>
+            <input 
+              type="password" maxLength="4" value={nuevoPinInput} 
+              onChange={e => setNuevoPinInput(e.target.value.replace(/[^0-9]/g, ''))}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-center tracking-[1em] font-mono text-xl text-slate-800 dark:text-white outline-none focus:border-emerald-500 mb-4"
+              placeholder="••••" autoFocus
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setModalPin(null)} className="flex-1 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold cursor-pointer text-sm">Cancelar</button>
+              <button onClick={confirmarResetPin} className="flex-1 py-2 rounded-lg bg-emerald-600 text-white font-bold cursor-pointer hover:bg-emerald-500 text-sm">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
