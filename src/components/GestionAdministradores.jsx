@@ -18,6 +18,11 @@ export default function GestionAdministradores() {
   const [rol, setRol] = useState('ADMIN_SEDE');
   const [sede, setSede] = useState('TODAS'); // Default a TODAS
 
+  const lanzarToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  };
+
   useEffect(() => {
     // 1. Escuchar Administradores
     const unsubAdmins = onValue(ref(db, 'administradores'), (snapshot) => {
